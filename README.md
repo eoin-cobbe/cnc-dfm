@@ -13,10 +13,14 @@ cd cnc-dfm
 mamba create -y -p .conda-env python=3.11 pythonocc-core pip fzf fd-find
 
 # make `run` available globally
+REPO_DIR="$(pwd)"
 mkdir -p ~/.local/bin
-ln -sf "$(pwd)/run" ~/.local/bin/run
-echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
+ln -sf "${REPO_DIR}/run" ~/.local/bin/run
+grep -qxF 'export PATH="$HOME/.local/bin:$PATH"' ~/.zshrc || echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zshrc
+grep -qxF 'export PATH="$HOME/.local/bin:$PATH"' ~/.zprofile || echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zprofile
 source ~/.zshrc
+rehash
+command -v run
 ```
 
 ## Use it (2 steps, every time)
