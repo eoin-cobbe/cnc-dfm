@@ -19,7 +19,7 @@ if [[ ! -f "${STEP_FILE}" ]]; then
 fi
 
 if [[ ! -x "${PYTHON_BIN}" ]]; then
-  mamba create -y -p "${ENV_DIR}" python=3.11 pythonocc-core pip
+  mamba create -y -p "${ENV_DIR}" python=3.11 pythonocc-core pip fzf fd-find
 fi
 
 "${PYTHON_BIN}" "${ROOT_DIR}/src/dfm_check.py" "${STEP_FILE}" "$@"
