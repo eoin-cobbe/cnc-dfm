@@ -1,1 +1,17 @@
 .DS_Store
+
+# Python local environments
+.venv/
+.conda-env/
+env/
+venv/
+
+# Python cache/build artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# Conda metadata/cache files that can appear in project dirs
+.conda/
+conda-meta/
