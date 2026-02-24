@@ -15,7 +15,7 @@ from OCC.Core.GeomAbs import GeomAbs_Plane
 from OCC.Core.IFSelect import IFSelect_RetDone
 from OCC.Core.Precision import precision
 from OCC.Core.STEPControl import STEPControl_Reader
-from OCC.Core.TopAbs import TopAbs_EDGE, TopAbs_FACE, TopAbs_IN
+from OCC.Core.TopAbs import TopAbs_EDGE, TopAbs_FACE, TopAbs_IN, TopAbs_REVERSED
 from OCC.Core.TopExp import TopExp_Explorer, topexp
 from OCC.Core.TopoDS import TopoDS_Face, TopoDS_Shape, topods
 from OCC.Core.TopTools import TopTools_IndexedDataMapOfShapeListOfShape, TopTools_ListIteratorOfListOfShape
@@ -91,7 +91,10 @@ def face_midpoint_and_normal(face: TopoDS_Face) -> Optional[Tuple[gp_Pnt, gp_Dir
     props = BRepLProp_SLProps(surf, u, v, 1, precision.Confusion())
     if not props.IsNormalDefined():
         return None
-    return surf.Value(u, v), props.Normal()
+    normal = props.Normal()
+    if face.Orientation() == TopAbs_REVERSED:
+        normal.Reverse()
+    return surf.Value(u, v), normal
 
 
 def is_internal_face(face: TopoDS_Face, centroid: gp_Pnt) -> bool:
