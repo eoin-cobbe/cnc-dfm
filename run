@@ -12,6 +12,21 @@ ENV_DIR="${ROOT_DIR}/.conda-env"
 FZF_BIN="${ENV_DIR}/bin/fzf"
 FD_BIN="${ENV_DIR}/bin/fd"
 
+if [[ $# -ge 1 ]]; then
+  case "$1" in
+    config|configure|init)
+      shift
+      exec "${ROOT_DIR}/scripts/config.sh" "$@"
+      ;;
+    show-config)
+      if [[ ! -x "${ENV_DIR}/bin/python" ]]; then
+        mamba create -y -p "${ENV_DIR}" python=3.11 pythonocc-core pip fzf fd-find
+      fi
+      exec "${ENV_DIR}/bin/python" "${ROOT_DIR}/src/dfm_config.py" --show
+      ;;
+  esac
+fi
+
 if [[ ! -x "${FD_BIN}" && -x "${ENV_DIR}/bin/fdfind" ]]; then
   FD_BIN="${ENV_DIR}/bin/fdfind"
 fi

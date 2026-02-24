@@ -78,5 +78,6 @@ fi
 
 echo "Install complete."
 echo "Use:"
+echo "  run config   # one-time setup wizard (can rerun anytime)"
 echo "  cd /path/to/parts"
 echo "  run"

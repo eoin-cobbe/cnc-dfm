@@ -15,3 +15,6 @@ __pycache__/
 # Conda metadata/cache files that can appear in project dirs
 .conda/
 conda-meta/
+
+# Local CNC-DFM runtime config
+cache/dfm_config.json
