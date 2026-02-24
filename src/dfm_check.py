@@ -115,11 +115,36 @@ def icon(passed: bool) -> str:
     return paint("OK", Ansi.GREEN) if passed else paint("XX", Ansi.RED)
 
 
+def print_block_logo() -> None:
+    lines = [
+        "  ######  ##    ##  ######          ######   ######## ##     ## ",
+        " ##    ## ###   ## ##    ##        ##    ##  ##       ###   ### ",
+        " ##       ####  ## ##              ##        ##       #### #### ",
+        " ##       ## ## ## ##              ##   #### ######   ## ### ## ",
+        " ##       ##  #### ##              ##    ##  ##       ##     ## ",
+        " ##    ## ##   ### ##    ##        ##    ##  ##       ##     ## ",
+        "  ######  ##    ##  ######          ######   ##       ##     ## ",
+    ]
+    for line in lines:
+        print(paint(line, Ansi.BOLD, Ansi.CYAN))
+
+
 def print_boot(step_file: str) -> None:
-    print(paint("[BOOT] CNC-DFM runtime online", Ansi.BOLD, Ansi.CYAN))
-    print(paint("[LOAD] STEP parser (pythonOCC) ready", Ansi.BLUE))
-    print(paint(f"[FILE] {step_file}", Ansi.BLUE))
-    print(paint("[CHECK] Running 5 DFM rules", Ansi.BLUE))
+    inner_width = 62
+
+    def line(text: str) -> None:
+        clipped = text[:inner_width]
+        print(paint(f"| {clipped.ljust(inner_width)} |", Ansi.BLUE))
+
+    print_block_logo()
+    print(paint("+----------------------------------------------------------------+", Ansi.CYAN))
+    print(paint("| CNC-DFM onboarding                                              |", Ansi.CYAN))
+    print(paint("+----------------------------------------------------------------+", Ansi.CYAN))
+    line("[BOOT] Runtime online")
+    line("[LOAD] STEP parser (pythonOCC) ready")
+    line(f"[FILE] {step_file}")
+    line("[CHECK] Running 5 DFM rules")
+    print(paint("+----------------------------------------------------------------+", Ansi.CYAN))
     print("")
 
 
