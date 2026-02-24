@@ -175,3 +175,20 @@ def planar_face_normal(face: TopoDS_Face) -> Optional[gp_Dir]:
     if not props.IsNormalDefined():
         return None
     return props.Normal()
+
+
+def signed_distance_between_planes(
+    face_a: TopoDS_Face, face_b: TopoDS_Face, normal_a: gp_Dir
+) -> Optional[float]:
+    surf_a = BRepAdaptor_Surface(face_a)
+    surf_b = BRepAdaptor_Surface(face_b)
+    if surf_a.GetType() != GeomAbs_Plane or surf_b.GetType() != GeomAbs_Plane:
+        return None
+    ua = (surf_a.FirstUParameter() + surf_a.LastUParameter()) * 0.5
+    va = (surf_a.FirstVParameter() + surf_a.LastVParameter()) * 0.5
+    ub = (surf_b.FirstUParameter() + surf_b.LastUParameter()) * 0.5
+    vb = (surf_b.FirstVParameter() + surf_b.LastVParameter()) * 0.5
+    pa = surf_a.Value(ua, va)
+    pb = surf_b.Value(ub, vb)
+    vec = gp_Pnt(pb.X(), pb.Y(), pb.Z()).XYZ().Subtracted(pa.XYZ())
+    return vec.Dot(normal_a.XYZ())
