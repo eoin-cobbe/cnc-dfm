@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import math
-from typing import List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 from OCC.Core.BRepAdaptor import BRepAdaptor_Surface
 from OCC.Core.BRepBndLib import brepbndlib
@@ -80,7 +80,9 @@ def _wall_probe_point(
     return gp_Pnt(x, y, z)
 
 
-def _opposing_planar_wall_thicknesses(shape: TopoDS_Shape, max_angle_deg: float = 10.0) -> List[float]:
+def _opposing_planar_wall_thicknesses_by_axis(
+    shape: TopoDS_Shape, max_angle_deg: float = 10.0
+) -> Dict[str, List[float]]:
     faces = collect_faces(shape)
     centroid = shape_centroid(shape)
     dx, dy, dz = shape_bbox(shape)
@@ -100,7 +102,7 @@ def _opposing_planar_wall_thicknesses(shape: TopoDS_Shape, max_angle_deg: float 
         point, normal = data
         planar.append((face, point, normal, is_internal_face(face, centroid), face_area(face)))
 
-    thicknesses: List[float] = []
+    thicknesses_by_axis: Dict[str, List[float]] = {"X": [], "Y": [], "Z": []}
     min_axis_dot = math.cos(math.radians(max_angle_deg))
     axis_dirs = [
         ("X", gp_Dir(1.0, 0.0, 0.0)),
@@ -141,13 +143,22 @@ def _opposing_planar_wall_thicknesses(shape: TopoDS_Shape, max_angle_deg: float 
                 classifier = BRepClass3d_SolidClassifier(shape, probe, precision.Confusion())
                 if classifier.State() != TopAbs_IN:
                     continue
-                thicknesses.append(thickness)
+                thicknesses_by_axis[axis_name].append(thickness)
 
-    return thicknesses
+    return thicknesses_by_axis
 
 
 def evaluate_thin_walls(shape: TopoDS_Shape, cfg: Config) -> RuleResult:
-    thicknesses = _opposing_planar_wall_thicknesses(shape)
+    thicknesses_by_axis = _opposing_planar_wall_thicknesses_by_axis(shape)
+    thicknesses = [t for axis in ("X", "Y", "Z") for t in thicknesses_by_axis[axis]]
+    axis_breakdown: Dict[str, Tuple[int, int, int]] = {}
+    for axis in ("X", "Y", "Z"):
+        axis_vals = thicknesses_by_axis[axis]
+        axis_detected = len(axis_vals)
+        axis_pass = sum(1 for t in axis_vals if t >= cfg.min_wall_thickness_mm)
+        axis_fail = axis_detected - axis_pass
+        axis_breakdown[axis] = (axis_detected, axis_pass, axis_fail)
+
     if not thicknesses:
         return RuleResult(
             name="Rule 3 — Wall Thickness",
@@ -157,6 +168,7 @@ def evaluate_thin_walls(shape: TopoDS_Shape, cfg: Config) -> RuleResult:
             detected_features=0,
             passed_features=0,
             failed_features=0,
+            axis_breakdown=axis_breakdown,
         )
 
     thinnest = min(thicknesses)
@@ -174,6 +186,7 @@ def evaluate_thin_walls(shape: TopoDS_Shape, cfg: Config) -> RuleResult:
         detected_features=len(thicknesses),
         passed_features=pass_count,
         failed_features=fail_count,
+        axis_breakdown=axis_breakdown,
         minimum_detected=thinnest,
         required_minimum=cfg.min_wall_thickness_mm,
     )

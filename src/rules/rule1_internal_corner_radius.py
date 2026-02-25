@@ -227,12 +227,13 @@ def detect_internal_corner_features(shape: TopoDS_Shape) -> Dict[str, List[dict]
 def evaluate_internal_corner_radius(shape: TopoDS_Shape, cfg: Config) -> RuleResult:
     radii_by_axis = detect_internal_corner_radii(shape)
     feature_radii: List[float] = []
-    axis_breakdown = {}
+    axis_breakdown: Dict[str, Tuple[int, int, int]] = {
+        "X": (0, 0, 0),
+        "Y": (0, 0, 0),
+        "Z": (0, 0, 0),
+    }
 
     for axis_name, axis_radii in radii_by_axis.items():
-        if not axis_radii:
-            continue
-
         axis_detected = len(axis_radii)
         axis_pass = sum(1 for r in axis_radii if r >= cfg.min_internal_corner_radius_mm)
         axis_fail = axis_detected - axis_pass
@@ -249,7 +250,7 @@ def evaluate_internal_corner_radius(shape: TopoDS_Shape, cfg: Config) -> RuleRes
             detected_features=0,
             passed_features=0,
             failed_features=0,
-            axis_breakdown={},
+            axis_breakdown=axis_breakdown,
             required_minimum=cfg.min_internal_corner_radius_mm,
         )
 
