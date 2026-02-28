@@ -14,6 +14,7 @@ from rules import (
     evaluate_hole_depth_vs_diameter,
     evaluate_internal_corner_radius,
     evaluate_multiple_setup_faces,
+    evaluate_tool_depth_to_diameter,
     evaluate_thin_walls,
 )
 
@@ -25,6 +26,7 @@ def run_all_rules(shape: TopoDS_Shape, cfg: Config) -> List[RuleResult]:
         evaluate_thin_walls(shape, cfg),
         evaluate_hole_depth_vs_diameter(shape, cfg),
         evaluate_multiple_setup_faces(shape, cfg),
+        evaluate_tool_depth_to_diameter(shape, cfg),
     ]
 
 
@@ -36,6 +38,13 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument("--min-wall", type=float, default=1.0, help="Rule 3 min wall thickness (mm)")
     parser.add_argument("--max-hole-ratio", type=float, default=6.0, help="Rule 4 max hole depth/diameter ratio")
     parser.add_argument("--max-setups", type=int, default=2, help="Rule 5 max setup faces/axes")
+    parser.add_argument("--tool-diameter", type=float, default=6.0, help="Rule 6 tool diameter (mm)")
+    parser.add_argument(
+        "--max-tool-depth-ratio",
+        type=float,
+        default=3.0,
+        help="Rule 6 max pocket depth/tool diameter ratio",
+    )
     return parser
 
 
@@ -44,6 +53,8 @@ def main() -> int:
     cfg = Config(
         min_internal_corner_radius_mm=args.min_radius,
         max_pocket_depth_ratio=args.max_pocket_ratio,
+        tool_diameter_mm=args.tool_diameter,
+        max_tool_depth_to_diameter_ratio=args.max_tool_depth_ratio,
         min_wall_thickness_mm=args.min_wall,
         max_hole_depth_to_diameter=args.max_hole_ratio,
         max_setups=args.max_setups,

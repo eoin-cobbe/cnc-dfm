@@ -3,6 +3,7 @@ from .rule2_deep_pocket_ratio import evaluate_deep_pocket_ratio
 from .rule3_thin_walls import evaluate_thin_walls
 from .rule4_hole_depth_vs_diameter import evaluate_hole_depth_vs_diameter
 from .rule5_multiple_setup_faces import evaluate_multiple_setup_faces
+from .rule6_tool_depth_to_diameter import evaluate_tool_depth_to_diameter
 
 __all__ = [
     "evaluate_internal_corner_radius",
@@ -10,4 +11,5 @@ __all__ = [
     "evaluate_thin_walls",
     "evaluate_hole_depth_vs_diameter",
     "evaluate_multiple_setup_faces",
+    "evaluate_tool_depth_to_diameter",
 ]

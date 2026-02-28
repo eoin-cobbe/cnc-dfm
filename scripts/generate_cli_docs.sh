@@ -28,7 +28,7 @@ make docs-cli
 
 - \`run\`: Launch the CNC-DFM checker (opens STEP picker if no file passed)
 - \`run /path/to/part.step\`: Run checker on a specific file
-- \`run config\`: Interactive setup wizard for R1-R5 thresholds
+- \`run config\`: Interactive setup wizard for R1-R6 thresholds
 - \`run show-config\`: Show saved threshold config currently used by \`run\`
 
 ## Checker CLI (src/dfm_check.py --help)

@@ -8,10 +8,10 @@ make docs-cli
 ```
 
 ## Main Commands
-![alt text](image.png)
+
 - `run`: Launch the CNC-DFM checker (opens STEP picker if no file passed)
 - `run /path/to/part.step`: Run checker on a specific file
-- `run config`: Interactive setup wizard for R1-R5 thresholds
+- `run config`: Interactive setup wizard for R1-R6 thresholds
 - `run show-config`: Show saved threshold config currently used by `run`
 
 ## Checker CLI (src/dfm_check.py --help)
@@ -20,7 +20,8 @@ make docs-cli
 usage: dfm_check.py [-h] [--min-radius MIN_RADIUS]
                     [--max-pocket-ratio MAX_POCKET_RATIO]
                     [--min-wall MIN_WALL] [--max-hole-ratio MAX_HOLE_RATIO]
-                    [--max-setups MAX_SETUPS]
+                    [--max-setups MAX_SETUPS] [--tool-diameter TOOL_DIAMETER]
+                    [--max-tool-depth-ratio MAX_TOOL_DEPTH_RATIO]
                     step_file
 
 CLI DFM checker for STEP files (pythonOCC).
@@ -39,6 +40,10 @@ options:
                         Rule 4 max hole depth/diameter ratio
   --max-setups MAX_SETUPS
                         Rule 5 max setup faces/axes
+  --tool-diameter TOOL_DIAMETER
+                        Rule 6 tool diameter (mm)
+  --max-tool-depth-ratio MAX_TOOL_DEPTH_RATIO
+                        Rule 6 max pocket depth/tool diameter ratio
 ```
 
 ## Config CLI (src/dfm_config.py --help)

@@ -25,4 +25,6 @@ class Config:
     min_wall_thickness_mm: float = 1.0
     max_hole_depth_to_diameter: float = 6.0
     max_setups: int = 2
+    tool_diameter_mm: float = 6.0
+    max_tool_depth_to_diameter_ratio: float = 3.0
     normal_similarity_deg: float = 12.0

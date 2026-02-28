@@ -1,7 +1,7 @@
 # cnc-dfm
 
 ## What this project is
-`cnc-dfm` is a command-line Design for Manufacturing checker for CNC parts. Give it a STEP file and it analyzes geometry against five core machining rules, then returns a readable pass/fail report with a short explanation for each rule.
+`cnc-dfm` is a command-line Design for Manufacturing checker for CNC parts. Give it a STEP file and it analyzes geometry against six core machining rules, then returns a readable pass/fail report with a short explanation for each rule.
 
 CLI command docs are in `/Users/eoincobbe/dev/cnc-dfm/docs/CLI_API.md` (regenerate with `make docs-cli`).
 
@@ -13,7 +13,7 @@ cd cnc-dfm
 run config
 ```
 
-`run config` starts an interactive setup wizard and saves your Rule 1 to Rule 5 thresholds permanently.  
+`run config` starts an interactive setup wizard and saves your Rule 1 to Rule 6 thresholds permanently.  
 Run it again anytime to overwrite and update the saved values.
 
 ## Use it (2 steps, every time)

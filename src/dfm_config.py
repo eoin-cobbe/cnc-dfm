@@ -10,6 +10,8 @@ from typing import Dict, List, Tuple
 DEFAULTS = {
     "min_radius": 1.0,
     "max_pocket_ratio": 4.0,
+    "tool_diameter": 6.0,
+    "max_tool_depth_ratio": 3.0,
     "min_wall": 1.0,
     "max_hole_ratio": 6.0,
     "max_setups": 2,
@@ -21,11 +23,15 @@ FIELDS: List[Tuple[str, str, str, str]] = [
     ("min_wall", "Rule 3", "Min wall thickness (mm)", "float"),
     ("max_hole_ratio", "Rule 4", "Max hole depth/diameter ratio", "float"),
     ("max_setups", "Rule 5", "Max setup faces/axes", "int"),
+    ("tool_diameter", "Rule 6", "Tool diameter (mm)", "float"),
+    ("max_tool_depth_ratio", "Rule 6", "Max pocket depth/tool diameter ratio", "float"),
 ]
 
 CLI_FLAGS = {
     "min_radius": "--min-radius",
     "max_pocket_ratio": "--max-pocket-ratio",
+    "tool_diameter": "--tool-diameter",
+    "max_tool_depth_ratio": "--max-tool-depth-ratio",
     "min_wall": "--min-wall",
     "max_hole_ratio": "--max-hole-ratio",
     "max_setups": "--max-setups",
@@ -122,7 +128,7 @@ def run_wizard() -> int:
     print("+----------------------------------------------------------------+")
     print("| CNC-DFM CONFIG SETUP                                           |")
     print("+----------------------------------------------------------------+")
-    print("Set thresholds for rules R1-R5. Press Enter to keep current value.")
+    print("Set thresholds for rules R1-R6. Press Enter to keep current value.")
     print("")
 
     updated: Dict[str, float] = {}
