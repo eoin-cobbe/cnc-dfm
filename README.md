@@ -1,2 +1,36 @@
 # cnc-dfm
-cnc-dfm makes it easier to design hardware in a way that it can be manufactured 
+
+## What this project is
+`cnc-dfm` is a command-line Design for Manufacturing checker for CNC parts. Give it a STEP file and it analyzes geometry against six core machining rules, then returns a readable pass/fail report with a short explanation for each rule.
+
+CLI command docs are in `/Users/eoincobbe/dev/cnc-dfm/docs/CLI_API.md` (regenerate with `make docs-cli`).
+
+## Install (one time)
+```bash
+git clone https://github.com/eoin-cobbe/cnc-dfm.git
+cd cnc-dfm
+./scripts/install.sh
+run config
+```
+
+`run config` starts an interactive setup wizard and saves your Rule 1 to Rule 6 thresholds plus material selection permanently.  
+Run it again anytime to overwrite and update the saved values.
+
+## Use it (2 steps, every time)
+
+1. Open terminal and go to the folder that contains your STEP file.
+```bash
+cd /path/to/your/part/folder
+```
+
+2. Run the checker.
+```bash
+run
+```
+
+`run` opens an in-terminal STEP picker.  
+If you already know the file path, you can run directly:
+`run /path/to/part.step`.
+
+If you did not add global `run`, use:
+`/path/to/cnc-dfm/run /path/to/part.step`
