@@ -18,7 +18,7 @@ DEFAULTS = {
     "max_hole_ratio": 6.0,
     "max_setups": 2,
     "material": DEFAULT_MATERIAL_KEY,
-    "baseline_6061_mrr": 60000.0,
+    "baseline_6061_mrr": 20000.0,
     "machine_hourly_rate_3_axis_eur": 50.0,
     "machine_hourly_rate_5_axis_eur": 100.0,
     "material_billet_cost_eur_per_kg": get_material(DEFAULT_MATERIAL_KEY).baseline_billet_cost_eur_per_kg,

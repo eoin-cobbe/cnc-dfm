@@ -70,7 +70,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--baseline-6061-mrr",
         type=float,
-        default=60000.0,
+        default=20000.0,
         help="Baseline 6061 roughing MRR (mm^3/min) used to estimate other materials",
     )
     parser.add_argument(

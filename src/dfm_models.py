@@ -34,7 +34,7 @@ class Config:
     max_tool_depth_to_diameter_ratio: float = 3.0
     normal_similarity_deg: float = 12.0
     material_key: str = "304_stainless_steel"
-    baseline_6061_mrr_mm3_per_min: float = 60000.0
+    baseline_6061_mrr_mm3_per_min: float = 20000.0
     machine_hourly_rate_3_axis_eur: float = 50.0
     machine_hourly_rate_5_axis_eur: float = 100.0
     material_billet_cost_eur_per_kg: float = 11.49
