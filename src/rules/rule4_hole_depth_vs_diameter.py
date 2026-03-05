@@ -19,6 +19,7 @@ from dfm_geometry import (
     offset_is_outside,
 )
 from dfm_models import Config, RuleResult
+from dfm_scoring import rule_multiplier_from_threshold
 
 
 def _cylinder_sweep_degrees(face: TopoDS_Face) -> Optional[float]:
@@ -158,6 +159,11 @@ def evaluate_hole_depth_vs_diameter(shape: TopoDS_Shape, cfg: Config) -> RuleRes
         axis_breakdown[axis] = (axis_detected, axis_pass, axis_fail)
 
     if not ratios:
+        rule_mult = rule_multiplier_from_threshold(
+            average_detected=0.0,
+            threshold=cfg.max_hole_depth_to_diameter,
+            threshold_kind="max",
+        )
         return RuleResult(
             name="Rule 4 — Hole Depth vs Diameter",
             passed=True,
@@ -167,9 +173,20 @@ def evaluate_hole_depth_vs_diameter(shape: TopoDS_Shape, cfg: Config) -> RuleRes
             passed_features=0,
             failed_features=0,
             axis_breakdown=axis_breakdown,
+            metric_label="Hole D/D Ratio",
+            average_detected=0.0,
+            threshold=cfg.max_hole_depth_to_diameter,
+            threshold_kind="max",
+            rule_multiplier=rule_mult,
         )
 
     worst = max(ratios)
+    avg_ratio = sum(ratios) / len(ratios)
+    rule_mult = rule_multiplier_from_threshold(
+        average_detected=avg_ratio,
+        threshold=cfg.max_hole_depth_to_diameter,
+        threshold_kind="max",
+    )
     pass_count = sum(1 for ratio in ratios if ratio <= cfg.max_hole_depth_to_diameter)
     fail_count = len(ratios) - pass_count
     passed = fail_count == 0
@@ -185,4 +202,9 @@ def evaluate_hole_depth_vs_diameter(shape: TopoDS_Shape, cfg: Config) -> RuleRes
         passed_features=pass_count,
         failed_features=fail_count,
         axis_breakdown=axis_breakdown,
+        metric_label="Hole D/D Ratio",
+        average_detected=avg_ratio,
+        threshold=cfg.max_hole_depth_to_diameter,
+        threshold_kind="max",
+        rule_multiplier=rule_mult,
     )

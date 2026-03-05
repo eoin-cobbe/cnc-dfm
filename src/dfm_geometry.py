@@ -64,6 +64,18 @@ def shape_centroid(shape: TopoDS_Shape) -> gp_Pnt:
     return props.CentreOfMass()
 
 
+def shape_volume_mm3(shape: TopoDS_Shape) -> float:
+    props = GProp_GProps()
+    brepgprop.VolumeProperties(shape, props)
+    return max(0.0, props.Mass())
+
+
+def shape_surface_area_mm2(shape: TopoDS_Shape) -> float:
+    props = GProp_GProps()
+    brepgprop.SurfaceProperties(shape, props)
+    return max(0.0, props.Mass())
+
+
 def get_edge_face_map(shape: TopoDS_Shape) -> TopTools_IndexedDataMapOfShapeListOfShape:
     mapping = TopTools_IndexedDataMapOfShapeListOfShape()
     topexp.MapShapesAndAncestors(shape, TopAbs_EDGE, TopAbs_FACE, mapping)

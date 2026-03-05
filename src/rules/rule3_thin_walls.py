@@ -23,6 +23,7 @@ from dfm_geometry import (
     signed_distance_between_planes,
 )
 from dfm_models import Config, RuleResult
+from dfm_scoring import rule_multiplier_from_threshold
 
 MIN_AXIS_FACE_AREA_FRACTION = 0.05
 
@@ -160,6 +161,11 @@ def evaluate_thin_walls(shape: TopoDS_Shape, cfg: Config) -> RuleResult:
         axis_breakdown[axis] = (axis_detected, axis_pass, axis_fail)
 
     if not thicknesses:
+        rule_mult = rule_multiplier_from_threshold(
+            average_detected=0.0,
+            threshold=cfg.min_wall_thickness_mm,
+            threshold_kind="min",
+        )
         return RuleResult(
             name="Rule 3 — Wall Thickness",
             passed=True,
@@ -169,9 +175,20 @@ def evaluate_thin_walls(shape: TopoDS_Shape, cfg: Config) -> RuleResult:
             passed_features=0,
             failed_features=0,
             axis_breakdown=axis_breakdown,
+            metric_label="Wall (mm)",
+            average_detected=0.0,
+            threshold=cfg.min_wall_thickness_mm,
+            threshold_kind="min",
+            rule_multiplier=rule_mult,
         )
 
     thinnest = min(thicknesses)
+    avg_thickness = sum(thicknesses) / len(thicknesses)
+    rule_mult = rule_multiplier_from_threshold(
+        average_detected=avg_thickness,
+        threshold=cfg.min_wall_thickness_mm,
+        threshold_kind="min",
+    )
     pass_count = sum(1 for t in thicknesses if t >= cfg.min_wall_thickness_mm)
     fail_count = len(thicknesses) - pass_count
     passed = fail_count == 0
@@ -189,4 +206,9 @@ def evaluate_thin_walls(shape: TopoDS_Shape, cfg: Config) -> RuleResult:
         axis_breakdown=axis_breakdown,
         minimum_detected=thinnest,
         required_minimum=cfg.min_wall_thickness_mm,
+        metric_label="Wall (mm)",
+        average_detected=avg_thickness,
+        threshold=cfg.min_wall_thickness_mm,
+        threshold_kind="min",
+        rule_multiplier=rule_mult,
     )

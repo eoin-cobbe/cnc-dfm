@@ -13,7 +13,7 @@ cd cnc-dfm
 run config
 ```
 
-`run config` starts an interactive setup wizard and saves your Rule 1 to Rule 6 thresholds permanently.  
+`run config` starts an interactive setup wizard and saves your Rule 1 to Rule 6 thresholds plus material selection permanently.  
 Run it again anytime to overwrite and update the saved values.
 
 ## Use it (2 steps, every time)

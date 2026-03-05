@@ -21,6 +21,7 @@ from dfm_geometry import (
     shape_bbox,
 )
 from dfm_models import Config, RuleResult
+from dfm_scoring import rule_multiplier_from_threshold
 from .rule4_hole_depth_vs_diameter import _is_hole_like_internal_cylinder
 
 
@@ -258,6 +259,11 @@ def _minimum_setup_cover(features: List[Set[str]]) -> Set[str]:
     return set(usable_keys)
 
 
+def required_setup_directions(shape: TopoDS_Shape, cfg: Config) -> Set[str]:
+    feature_access_sets = _collect_feature_access_sets(shape, cfg)
+    return _minimum_setup_cover(feature_access_sets)
+
+
 def evaluate_multiple_setup_faces(shape: TopoDS_Shape, cfg: Config) -> RuleResult:
     feature_access_sets = _collect_feature_access_sets(shape, cfg)
     setup_keys = _minimum_setup_cover(feature_access_sets)
@@ -274,6 +280,11 @@ def evaluate_multiple_setup_faces(shape: TopoDS_Shape, cfg: Config) -> RuleResul
         for axis_name in ("X", "Y", "Z")
     }
     setup_text = ", ".join(sorted(setup_keys)) if setup_keys else "none"
+    rule_mult = rule_multiplier_from_threshold(
+        average_detected=float(setups),
+        threshold=float(cfg.max_setups),
+        threshold_kind="max",
+    )
     return RuleResult(
         name="Rule 5 — Multiple Setup Faces",
         passed=passed,
@@ -286,4 +297,9 @@ def evaluate_multiple_setup_faces(shape: TopoDS_Shape, cfg: Config) -> RuleResul
         passed_features=pass_count,
         failed_features=fail_count,
         axis_breakdown=axis_breakdown,
+        metric_label="Setups",
+        average_detected=float(setups),
+        threshold=float(cfg.max_setups),
+        threshold_kind="max",
+        rule_multiplier=rule_mult,
     )

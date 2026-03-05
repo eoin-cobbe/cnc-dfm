@@ -17,11 +17,26 @@ make docs-cli
 ## Checker CLI (src/dfm_check.py --help)
 
 ```text
-usage: dfm_check.py [-h] [--min-radius MIN_RADIUS]
+usage: dfm_check.py [-h] [--qty QTY] [--min-radius MIN_RADIUS]
                     [--max-pocket-ratio MAX_POCKET_RATIO]
                     [--min-wall MIN_WALL] [--max-hole-ratio MAX_HOLE_RATIO]
                     [--max-setups MAX_SETUPS] [--tool-diameter TOOL_DIAMETER]
                     [--max-tool-depth-ratio MAX_TOOL_DEPTH_RATIO]
+                    [--material {304_stainless_steel,6061_aluminium,1080_steel,grade_5_titanium}]
+                    [--baseline-6061-mrr BASELINE_6061_MRR]
+                    [--machine-hourly-rate-3-axis-eur MACHINE_HOURLY_RATE_3_AXIS_EUR]
+                    [--machine-hourly-rate-5-axis-eur MACHINE_HOURLY_RATE_5_AXIS_EUR]
+                    [--material-billet-cost-eur-per-kg MATERIAL_BILLET_COST_EUR_PER_KG]
+                    [--surface-penalty-slope SURFACE_PENALTY_SLOPE]
+                    [--surface-penalty-max-multiplier SURFACE_PENALTY_MAX_MULTIPLIER]
+                    [--hole-count-penalty-per-feature HOLE_COUNT_PENALTY_PER_FEATURE]
+                    [--hole-count-penalty-max-multiplier HOLE_COUNT_PENALTY_MAX_MULTIPLIER]
+                    [--radius-count-penalty-per-feature RADIUS_COUNT_PENALTY_PER_FEATURE]
+                    [--radius-count-penalty-max-multiplier RADIUS_COUNT_PENALTY_MAX_MULTIPLIER]
+                    [--qty-learning-rate QTY_LEARNING_RATE]
+                    [--qty-factor-floor QTY_FACTOR_FLOOR]
+                    [--material-qty-discount-rate MATERIAL_QTY_DISCOUNT_RATE]
+                    [--material-qty-discount-floor MATERIAL_QTY_DISCOUNT_FLOOR]
                     step_file
 
 CLI DFM checker for STEP files (pythonOCC).
@@ -31,6 +46,7 @@ positional arguments:
 
 options:
   -h, --help            show this help message and exit
+  --qty QTY             Batch quantity for learning-curve scaling
   --min-radius MIN_RADIUS
                         Rule 1 min internal radius (mm)
   --max-pocket-ratio MAX_POCKET_RATIO
@@ -44,6 +60,44 @@ options:
                         Rule 6 tool diameter (mm)
   --max-tool-depth-ratio MAX_TOOL_DEPTH_RATIO
                         Rule 6 max pocket depth/tool diameter ratio
+  --material {304_stainless_steel,6061_aluminium,1080_steel,grade_5_titanium}
+                        Part material key
+  --baseline-6061-mrr BASELINE_6061_MRR
+                        Baseline 6061 roughing MRR (mm^3/min) used to estimate
+                        other materials
+  --machine-hourly-rate-3-axis-eur MACHINE_HOURLY_RATE_3_AXIS_EUR
+                        3-axis machine hourly rate in EUR/hr for roughing cost
+                        estimate
+  --machine-hourly-rate-5-axis-eur MACHINE_HOURLY_RATE_5_AXIS_EUR
+                        5-axis machine hourly rate in EUR/hr for roughing cost
+                        estimate
+  --material-billet-cost-eur-per-kg MATERIAL_BILLET_COST_EUR_PER_KG
+                        Billet cost in EUR/kg for selected material (defaults
+                        to material baseline)
+  --surface-penalty-slope SURFACE_PENALTY_SLOPE
+                        Surface complexity slope for finish multiplier (time
+                        penalty)
+  --surface-penalty-max-multiplier SURFACE_PENALTY_MAX_MULTIPLIER
+                        Maximum finish multiplier from surface complexity
+  --hole-count-penalty-per-feature HOLE_COUNT_PENALTY_PER_FEATURE
+                        Penalty per detected hole feature (adds to multiplier)
+  --hole-count-penalty-max-multiplier HOLE_COUNT_PENALTY_MAX_MULTIPLIER
+                        Maximum hole-count multiplier
+  --radius-count-penalty-per-feature RADIUS_COUNT_PENALTY_PER_FEATURE
+                        Penalty per detected internal radius feature (adds to
+                        multiplier)
+  --radius-count-penalty-max-multiplier RADIUS_COUNT_PENALTY_MAX_MULTIPLIER
+                        Maximum radius-count multiplier
+  --qty-learning-rate QTY_LEARNING_RATE
+                        Learning rate for quantity scaling (e.g., 0.90 means
+                        10% reduction per quantity doubling)
+  --qty-factor-floor QTY_FACTOR_FLOOR
+                        Minimum quantity multiplier floor
+  --material-qty-discount-rate MATERIAL_QTY_DISCOUNT_RATE
+                        Material discount rate for quantity scaling (e.g.,
+                        0.97 means 3% reduction per quantity doubling)
+  --material-qty-discount-floor MATERIAL_QTY_DISCOUNT_FLOOR
+                        Minimum material discount multiplier floor
 ```
 
 ## Config CLI (src/dfm_config.py --help)

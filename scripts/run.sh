@@ -29,4 +29,24 @@ while IFS= read -r line; do
   fi
 done < <("${PYTHON_BIN}" "${ROOT_DIR}/src/dfm_config.py" --print-args)
 
-"${PYTHON_BIN}" "${ROOT_DIR}/src/dfm_check.py" "${STEP_FILE}" "${CONFIG_ARGS[@]}" "$@"
+has_qty_arg=0
+for arg in "$@"; do
+  if [[ "${arg}" == "--qty" || "${arg}" == --qty=* ]]; then
+    has_qty_arg=1
+    break
+  fi
+done
+
+QTY_ARG=()
+if [[ ${has_qty_arg} -eq 0 && -t 0 ]]; then
+  while true; do
+    read -r -p "qty: " qty_input
+    if [[ "${qty_input}" =~ ^[1-9][0-9]*$ ]]; then
+      QTY_ARG=(--qty "${qty_input}")
+      break
+    fi
+    echo "Please enter a whole number >= 1."
+  done
+fi
+
+"${PYTHON_BIN}" "${ROOT_DIR}/src/dfm_check.py" "${STEP_FILE}" "${CONFIG_ARGS[@]}" "${QTY_ARG[@]}" "$@"

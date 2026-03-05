@@ -25,6 +25,7 @@ from dfm_geometry import (
     shape_centroid,
 )
 from dfm_models import Config, RuleResult
+from dfm_scoring import rule_multiplier_from_fail_fraction
 
 AXIS_DIRS: Dict[str, gp_Dir] = {
     "X": gp_Dir(1.0, 0.0, 0.0),
@@ -371,6 +372,7 @@ def evaluate_missing_internal_relief(shape: TopoDS_Shape, cfg: Config) -> RuleRe
     axis_breakdown = {axis_name: (count, 0, count) for axis_name, count in axis_failures.items()}
 
     if failed == 0:
+        rule_mult = rule_multiplier_from_fail_fraction(detected_features=0, failed_features=0)
         return RuleResult(
             name="Rule 0 — Missing Internal Relief",
             passed=True,
@@ -380,8 +382,10 @@ def evaluate_missing_internal_relief(shape: TopoDS_Shape, cfg: Config) -> RuleRe
             passed_features=0,
             failed_features=0,
             axis_breakdown=axis_breakdown,
+            rule_multiplier=rule_mult,
         )
 
+    rule_mult = rule_multiplier_from_fail_fraction(detected_features=failed, failed_features=failed)
     return RuleResult(
         name="Rule 0 — Missing Internal Relief",
         passed=False,
@@ -394,4 +398,5 @@ def evaluate_missing_internal_relief(shape: TopoDS_Shape, cfg: Config) -> RuleRe
         passed_features=0,
         failed_features=failed,
         axis_breakdown=axis_breakdown,
+        rule_multiplier=rule_mult,
     )

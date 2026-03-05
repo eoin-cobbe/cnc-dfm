@@ -18,6 +18,7 @@ from dfm_geometry import (
     signed_distance_between_planes,
 )
 from dfm_models import Config, RuleResult
+from dfm_scoring import rule_multiplier_from_threshold
 from .rule1_internal_corner_radius import detect_internal_corner_features
 
 
@@ -301,6 +302,7 @@ def evaluate_deep_pocket_ratio(shape: TopoDS_Shape, cfg: Config) -> RuleResult:
     detected = 0
     offenders = 0
     worst_ratio = 0.0
+    ratios: List[float] = []
 
     for axis_name, axis_features in features_by_axis.items():
         layers = _group_corner_features_by_depth(axis_features, tol_mm=0.5)
@@ -321,6 +323,7 @@ def evaluate_deep_pocket_ratio(shape: TopoDS_Shape, cfg: Config) -> RuleResult:
 
                 axis_detected += 1
                 ratio = depth / opening
+                ratios.append(ratio)
                 worst_ratio = max(worst_ratio, ratio)
                 if ratio > cfg.max_pocket_depth_ratio:
                     axis_offenders += 1
@@ -333,6 +336,12 @@ def evaluate_deep_pocket_ratio(shape: TopoDS_Shape, cfg: Config) -> RuleResult:
     pass_count = max(detected - offenders, 0)
     fail_count = offenders
     passed = fail_count == 0
+    avg_ratio = (sum(ratios) / len(ratios)) if ratios else 0.0
+    rule_mult = rule_multiplier_from_threshold(
+        average_detected=avg_ratio,
+        threshold=cfg.max_pocket_depth_ratio,
+        threshold_kind="max",
+    )
     details = (
         f"Worst pocket depth ratio is {worst_ratio:.2f}; "
         f"maximum allowed is {cfg.max_pocket_depth_ratio:.2f}. "
@@ -351,4 +360,9 @@ def evaluate_deep_pocket_ratio(shape: TopoDS_Shape, cfg: Config) -> RuleResult:
         passed_features=pass_count,
         failed_features=fail_count,
         axis_breakdown=axis_breakdown,
+        metric_label="Depth/Open Ratio",
+        average_detected=avg_ratio,
+        threshold=cfg.max_pocket_depth_ratio,
+        threshold_kind="max",
+        rule_multiplier=rule_mult,
     )
