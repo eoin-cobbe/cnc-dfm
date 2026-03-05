@@ -10,6 +10,7 @@ from dfm_geometry import read_step
 from dfm_models import Config, RuleResult
 from dfm_terminal import print_boot, print_report
 from rules import (
+    evaluate_missing_internal_relief,
     evaluate_deep_pocket_ratio,
     evaluate_hole_depth_vs_diameter,
     evaluate_internal_corner_radius,
@@ -20,7 +21,11 @@ from rules import (
 
 
 def run_all_rules(shape: TopoDS_Shape, cfg: Config) -> List[RuleResult]:
+    rule0 = evaluate_missing_internal_relief(shape, cfg)
+    if not rule0.passed:
+        return [rule0]
     return [
+        rule0,
         evaluate_internal_corner_radius(shape, cfg),
         evaluate_deep_pocket_ratio(shape, cfg),
         evaluate_thin_walls(shape, cfg),

@@ -21,7 +21,7 @@ from dfm_geometry import (
     shape_bbox,
 )
 from dfm_models import Config, RuleResult
-from .rule4_hole_depth_vs_diameter import _has_hole_opening_or_cap_plane, _is_concave_internal_cylinder
+from .rule4_hole_depth_vs_diameter import _is_hole_like_internal_cylinder
 
 
 AXIS_DIRS: Dict[str, gp_Dir] = {
@@ -201,7 +201,7 @@ def _collect_feature_access_sets(shape: TopoDS_Shape, cfg: Config) -> List[Set[s
         if key in seen:
             continue
 
-        is_hole = _is_concave_internal_cylinder(shape, face) and _has_hole_opening_or_cap_plane(edge_face_map, face)
+        is_hole = _is_hole_like_internal_cylinder(shape, edge_face_map, face)
         wall_normals, cap_setups = _adjacent_planar_normals(face, edge_face_map, cfg)
         axis_name = _dominant_axis_name(surf.Cylinder().Axis().Direction(), cfg.normal_similarity_deg)
         if axis_name is None:

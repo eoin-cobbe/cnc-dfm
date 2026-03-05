@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import os
+import re
 from typing import List
 
 from dfm_models import RuleResult
@@ -63,7 +64,9 @@ def print_report(results: List[RuleResult], file_path: str) -> None:
     print(paint("-" * 72, Ansi.GRAY))
 
     for idx, result in enumerate(results, start=1):
-        print(f"{icon(result.passed)}  {paint(f'R{idx}', Ansi.BOLD, Ansi.CYAN)}  {result.name}")
+        match = re.search(r"Rule\s+(\d+)", result.name)
+        label = f"R{match.group(1)}" if match else f"R{idx}"
+        print(f"{icon(result.passed)}  {paint(label, Ansi.BOLD, Ansi.CYAN)}  {result.name}")
         print(f"    {paint('RESULT', Ansi.BOLD)}  {status_text(result.passed)}")
         print(
             f"    {paint('FEATURES', Ansi.DIM)} "

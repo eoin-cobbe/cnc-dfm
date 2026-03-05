@@ -21,6 +21,15 @@ from dfm_geometry import (
 from dfm_models import Config, RuleResult
 
 
+def _cylinder_sweep_degrees(face: TopoDS_Face) -> Optional[float]:
+    surf = BRepAdaptor_Surface(face)
+    if surf.GetType() != GeomAbs_Cylinder:
+        return None
+    u1, u2 = surf.FirstUParameter(), surf.LastUParameter()
+    sweep_deg = abs(u2 - u1) * 180.0 / 3.141592653589793
+    return sweep_deg
+
+
 def cylinder_face_depth_and_diameter(face: TopoDS_Face) -> Optional[Tuple[float, float]]:
     surf = BRepAdaptor_Surface(face)
     if surf.GetType() != GeomAbs_Cylinder:
@@ -92,6 +101,15 @@ def _has_hole_opening_or_cap_plane(edge_face_map, face: TopoDS_Face) -> bool:
     return False
 
 
+def _is_hole_like_internal_cylinder(shape: TopoDS_Shape, edge_face_map, face: TopoDS_Face) -> bool:
+    sweep_deg = _cylinder_sweep_degrees(face)
+    if sweep_deg is None or sweep_deg < 270.0:
+        return False
+    if not _is_concave_internal_cylinder(shape, face):
+        return False
+    return _has_hole_opening_or_cap_plane(edge_face_map, face)
+
+
 def evaluate_hole_depth_vs_diameter(shape: TopoDS_Shape, cfg: Config) -> RuleResult:
     faces = collect_faces(shape)
     edge_face_map = get_edge_face_map(shape)
@@ -103,9 +121,7 @@ def evaluate_hole_depth_vs_diameter(shape: TopoDS_Shape, cfg: Config) -> RuleRes
         cyl = cylinder_face_depth_and_diameter(face)
         if cyl is None:
             continue
-        if not _is_concave_internal_cylinder(shape, face):
-            continue
-        if not _has_hole_opening_or_cap_plane(edge_face_map, face):
+        if not _is_hole_like_internal_cylinder(shape, edge_face_map, face):
             continue
         depth, diameter = cyl
         surf = BRepAdaptor_Surface(face)
