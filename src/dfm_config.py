@@ -18,7 +18,7 @@ DEFAULTS = {
     "max_hole_ratio": 6.0,
     "max_setups": 2,
     "material": DEFAULT_MATERIAL_KEY,
-    "baseline_6061_mrr": 120000.0,
+    "baseline_6061_mrr": 60000.0,
     "machine_hourly_rate_3_axis_eur": 50.0,
     "machine_hourly_rate_5_axis_eur": 100.0,
     "material_billet_cost_eur_per_kg": get_material(DEFAULT_MATERIAL_KEY).baseline_billet_cost_eur_per_kg,
@@ -28,10 +28,8 @@ DEFAULTS = {
     "hole_count_penalty_max_multiplier": 1.5,
     "radius_count_penalty_per_feature": 0.005,
     "radius_count_penalty_max_multiplier": 1.5,
-    "qty_learning_rate": 0.90,
-    "qty_factor_floor": 0.75,
-    "material_qty_discount_rate": 0.97,
-    "material_qty_discount_floor": 0.85,
+    "qty_learning_rate": 0.76,
+    "qty_factor_floor": 0.29,
 }
 
 FIELDS: List[Tuple[str, str, str, str]] = [
@@ -55,8 +53,6 @@ FIELDS: List[Tuple[str, str, str, str]] = [
     ("radius_count_penalty_max_multiplier", "Part", "Radius-count penalty max multiplier", "float"),
     ("qty_learning_rate", "Part", "Quantity learning rate", "float"),
     ("qty_factor_floor", "Part", "Quantity factor floor", "float"),
-    ("material_qty_discount_rate", "Part", "Material qty discount rate", "float"),
-    ("material_qty_discount_floor", "Part", "Material qty discount floor", "float"),
 ]
 
 CLI_FLAGS = {
@@ -80,8 +76,6 @@ CLI_FLAGS = {
     "radius_count_penalty_max_multiplier": "--radius-count-penalty-max-multiplier",
     "qty_learning_rate": "--qty-learning-rate",
     "qty_factor_floor": "--qty-factor-floor",
-    "material_qty_discount_rate": "--material-qty-discount-rate",
-    "material_qty_discount_floor": "--material-qty-discount-floor",
 }
 
 LOGO_LINES = [
@@ -193,10 +187,6 @@ def validate_value(key: str, kind: str, value: str):
         raise ValueError(f"{key} must be <= 1.0")
     if key == "qty_factor_floor" and parsed > 1.0:
         raise ValueError(f"{key} must be <= 1.0")
-    if key == "material_qty_discount_rate" and parsed > 1.0:
-        raise ValueError(f"{key} must be <= 1.0")
-    if key == "material_qty_discount_floor" and parsed > 1.0:
-        raise ValueError(f"{key} must be <= 1.0")
     return parsed
 
 
@@ -274,6 +264,7 @@ def run_wizard() -> int:
             selected = get_material(str(updated["material"]))
             print(f"{rule}: {label} [{selected.label}] = {updated[key]}")
             print(f"      Baseline source: {selected.baseline_billet_cost_source}")
+            print(f"      Baseline fixed stock cost: {selected.baseline_fixed_stock_cost_eur}")
             continue
         print(f"{rule}: {label} = {updated[key]}")
     print(f"Path: {config_path()}")

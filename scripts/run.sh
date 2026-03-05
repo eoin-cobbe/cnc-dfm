@@ -37,7 +37,7 @@ for arg in "$@"; do
   fi
 done
 
-QTY_ARG=()
+declare -a QTY_ARG=()
 if [[ ${has_qty_arg} -eq 0 && -t 0 ]]; then
   while true; do
     read -r -p "qty: " qty_input
@@ -49,4 +49,9 @@ if [[ ${has_qty_arg} -eq 0 && -t 0 ]]; then
   done
 fi
 
-"${PYTHON_BIN}" "${ROOT_DIR}/src/dfm_check.py" "${STEP_FILE}" "${CONFIG_ARGS[@]}" "${QTY_ARG[@]}" "$@"
+CMD=("${PYTHON_BIN}" "${ROOT_DIR}/src/dfm_check.py" "${STEP_FILE}" "${CONFIG_ARGS[@]}")
+if [[ ${#QTY_ARG[@]} -gt 0 ]]; then
+  CMD+=("${QTY_ARG[@]}")
+fi
+CMD+=("$@")
+"${CMD[@]}"

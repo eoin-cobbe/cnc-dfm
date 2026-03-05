@@ -34,20 +34,18 @@ class Config:
     max_tool_depth_to_diameter_ratio: float = 3.0
     normal_similarity_deg: float = 12.0
     material_key: str = "304_stainless_steel"
-    baseline_6061_mrr_mm3_per_min: float = 120000.0
+    baseline_6061_mrr_mm3_per_min: float = 60000.0
     machine_hourly_rate_3_axis_eur: float = 50.0
     machine_hourly_rate_5_axis_eur: float = 100.0
-    material_billet_cost_eur_per_kg: float = 3.8
+    material_billet_cost_eur_per_kg: float = 11.49
     surface_penalty_slope: float = 0.15
     surface_penalty_max_multiplier: float = 1.5
     hole_count_penalty_per_feature: float = 0.01
     hole_count_penalty_max_multiplier: float = 1.5
     radius_count_penalty_per_feature: float = 0.005
     radius_count_penalty_max_multiplier: float = 1.5
-    qty_learning_rate: float = 0.90
-    qty_factor_floor: float = 0.75
-    material_qty_discount_rate: float = 0.97
-    material_qty_discount_floor: float = 0.85
+    qty_learning_rate: float = 0.76
+    qty_factor_floor: float = 0.29
 
 
 @dataclass
@@ -72,10 +70,10 @@ class PartProcessData:
     mass_kg: float
     stock_mass_kg: float
     material_billet_cost_eur_per_kg: float
+    material_fixed_cost_eur: float
     material_stock_cost_eur: float
-    material_discount_multiplier: float
-    discounted_material_stock_cost_eur: float
     material_billet_cost_source: str
+    material_fixed_cost_source: str
     required_setup_directions: str
     machine_type: str
     hole_count: int

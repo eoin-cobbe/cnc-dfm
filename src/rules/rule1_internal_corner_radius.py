@@ -243,11 +243,6 @@ def evaluate_internal_corner_radius(shape: TopoDS_Shape, cfg: Config) -> RuleRes
         axis_breakdown[axis_name] = (axis_detected, axis_pass, axis_fail)
 
     if not feature_radii:
-        rule_mult = rule_multiplier_from_threshold(
-            average_detected=0.0,
-            threshold=cfg.min_internal_corner_radius_mm,
-            threshold_kind="min",
-        )
         return RuleResult(
             name="Rule 1 — Internal Corner Radius Too Small",
             passed=True,
@@ -262,7 +257,7 @@ def evaluate_internal_corner_radius(shape: TopoDS_Shape, cfg: Config) -> RuleRes
             average_detected=0.0,
             threshold=cfg.min_internal_corner_radius_mm,
             threshold_kind="min",
-            rule_multiplier=rule_mult,
+            rule_multiplier=1.0,
         )
 
     min_radius = min(feature_radii)

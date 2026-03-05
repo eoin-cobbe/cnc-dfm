@@ -70,7 +70,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--baseline-6061-mrr",
         type=float,
-        default=120000.0,
+        default=60000.0,
         help="Baseline 6061 roughing MRR (mm^3/min) used to estimate other materials",
     )
     parser.add_argument(
@@ -130,26 +130,14 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--qty-learning-rate",
         type=float,
-        default=0.90,
+        default=0.76,
         help="Learning rate for quantity scaling (e.g., 0.90 means 10%% reduction per quantity doubling)",
     )
     parser.add_argument(
         "--qty-factor-floor",
         type=float,
-        default=0.75,
+        default=0.29,
         help="Minimum quantity multiplier floor",
-    )
-    parser.add_argument(
-        "--material-qty-discount-rate",
-        type=float,
-        default=0.97,
-        help="Material discount rate for quantity scaling (e.g., 0.97 means 3%% reduction per quantity doubling)",
-    )
-    parser.add_argument(
-        "--material-qty-discount-floor",
-        type=float,
-        default=0.85,
-        help="Minimum material discount multiplier floor",
     )
     return parser
 
@@ -200,11 +188,12 @@ def compute_part_process_data(
         if material_billet_cost_eur_per_kg is not None
         else material.baseline_billet_cost_eur_per_kg
     )
+    material_fixed_cost_eur = material.baseline_fixed_stock_cost_eur
     volume_m3 = volume_mm3 * 1e-9
     stock_volume_m3 = stock_volume_mm3 * 1e-9
     mass_kg = volume_m3 * material.density_kg_per_m3
     stock_mass_kg = stock_volume_m3 * material.density_kg_per_m3
-    material_stock_cost_eur = stock_mass_kg * billet_cost_eur_per_kg
+    material_stock_cost_eur = material_fixed_cost_eur + (stock_mass_kg * billet_cost_eur_per_kg)
     hole_count_multiplier = min(
         cfg.hole_count_penalty_max_multiplier,
         1.0 + (cfg.hole_count_penalty_per_feature * max(0, hole_count)),
@@ -229,11 +218,6 @@ def compute_part_process_data(
     qty_safe = max(1, qty)
     learning_exponent = math.log(learning_rate, 2)
     qty_multiplier = max(qty_factor_floor, qty_safe ** learning_exponent)
-    material_discount_rate = max(1e-6, min(cfg.material_qty_discount_rate, 1.0))
-    material_discount_floor = max(1e-6, min(cfg.material_qty_discount_floor, 1.0))
-    material_discount_exponent = math.log(material_discount_rate, 2)
-    material_discount_multiplier = max(material_discount_floor, qty_safe ** material_discount_exponent)
-    discounted_material_stock_cost_eur = material_stock_cost_eur * material_discount_multiplier
     total_time_multiplier = (
         finish_multiplier
         * material_time_multiplier
@@ -251,7 +235,8 @@ def compute_part_process_data(
     machining_time_min = base_machining_time_min * qty_multiplier
     roughing_cost = (roughing_time_min / 60.0) * machine_hourly_rate_eur
     machining_cost = (machining_time_min / 60.0) * machine_hourly_rate_eur
-    total_estimated_cost_eur = discounted_material_stock_cost_eur + machining_cost
+    base_machining_cost = (base_machining_time_min / 60.0) * machine_hourly_rate_eur
+    total_estimated_cost_eur = (material_stock_cost_eur + base_machining_cost) * qty_multiplier
     batch_total_estimated_cost_eur = total_estimated_cost_eur * qty_safe
     return PartProcessData(
         material_key=material.key,
@@ -274,10 +259,10 @@ def compute_part_process_data(
         mass_kg=mass_kg,
         stock_mass_kg=stock_mass_kg,
         material_billet_cost_eur_per_kg=billet_cost_eur_per_kg,
+        material_fixed_cost_eur=material_fixed_cost_eur,
         material_stock_cost_eur=material_stock_cost_eur,
-        material_discount_multiplier=material_discount_multiplier,
-        discounted_material_stock_cost_eur=discounted_material_stock_cost_eur,
         material_billet_cost_source=material.baseline_billet_cost_source,
+        material_fixed_cost_source=material.baseline_fixed_stock_cost_source,
         required_setup_directions=setup_text,
         machine_type=machine_type,
         hole_count=hole_count,
@@ -333,8 +318,6 @@ def main() -> int:
         radius_count_penalty_max_multiplier=args.radius_count_penalty_max_multiplier,
         qty_learning_rate=args.qty_learning_rate,
         qty_factor_floor=args.qty_factor_floor,
-        material_qty_discount_rate=args.material_qty_discount_rate,
-        material_qty_discount_floor=args.material_qty_discount_floor,
     )
     print_boot(args.step_file)
     shape = read_step(args.step_file)

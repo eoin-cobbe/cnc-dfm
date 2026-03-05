@@ -13,6 +13,8 @@ class MaterialSpec:
     machinability_source: str
     baseline_billet_cost_eur_per_kg: float
     baseline_billet_cost_source: str
+    baseline_fixed_stock_cost_eur: float
+    baseline_fixed_stock_cost_source: str
 
 
 MATERIAL_OPTIONS: List[MaterialSpec] = [
@@ -20,10 +22,12 @@ MATERIAL_OPTIONS: List[MaterialSpec] = [
         key="304_stainless_steel",
         label="304 stainless steel",
         density_kg_per_m3=7930.0,
-        machinability_percent=43.0,
-        machinability_source="https://www.machiningdoctor.com/mds/?matId=1750",
-        baseline_billet_cost_eur_per_kg=3.8,
-        baseline_billet_cost_source="https://www.jingangsteels.com/industry-news/304-stainless-steel-bar-price.html",
+        machinability_percent=125.4,
+        machinability_source="xometry delta-quote calibration (2026-03-05): (421-210)/(209-111)=2.153x vs 6061",
+        baseline_billet_cost_eur_per_kg=11.49,
+        baseline_billet_cost_source="xometry no-pocket two-point fit (2026-03-05)",
+        baseline_fixed_stock_cost_eur=87.0,
+        baseline_fixed_stock_cost_source="xometry no-pocket two-point fit (2026-03-05)",
     ),
     MaterialSpec(
         key="6061_aluminium",
@@ -31,26 +35,32 @@ MATERIAL_OPTIONS: List[MaterialSpec] = [
         density_kg_per_m3=2700.0,
         machinability_percent=270.0,
         machinability_source="https://www.machiningdoctor.com/mds/?matId=3850",
-        baseline_billet_cost_eur_per_kg=3.0,
-        baseline_billet_cost_source="https://luokaiweialuminum.com/2025/08/20/6061-aluminum-plate-price-2025/",
+        baseline_billet_cost_eur_per_kg=16.46,
+        baseline_billet_cost_source="xometry no-pocket two-point fit (2026-03-05)",
+        baseline_fixed_stock_cost_eur=51.0,
+        baseline_fixed_stock_cost_source="xometry no-pocket two-point fit (2026-03-05)",
     ),
     MaterialSpec(
         key="1080_steel",
         label="1080 steel",
         density_kg_per_m3=7850.0,
-        machinability_percent=48.0,
-        machinability_source="https://www.machiningdoctor.com/mds/?matId=200",
-        baseline_billet_cost_eur_per_kg=2.0,
-        baseline_billet_cost_source="https://www.steelworld.co.in/high-carbon-c80-steel-sheet-10366004.html",
+        machinability_percent=224.2,
+        machinability_source="xometry delta-quote calibration (2026-03-05): (244-126)/(209-111)=1.204x vs 6061",
+        baseline_billet_cost_eur_per_kg=6.65,
+        baseline_billet_cost_source="xometry no-pocket two-point fit (2026-03-05)",
+        baseline_fixed_stock_cost_eur=55.5,
+        baseline_fixed_stock_cost_source="xometry no-pocket two-point fit (2026-03-05)",
     ),
     MaterialSpec(
         key="grade_5_titanium",
         label="Grade 5 titanium",
         density_kg_per_m3=4430.0,
-        machinability_percent=20.0,
-        machinability_source="https://www.machiningdoctor.com/mds/?matId=6670",
-        baseline_billet_cost_eur_per_kg=55.0,
-        baseline_billet_cost_source="https://www.tiworker.com/products/gr5-eli-bar-titanium-price",
+        machinability_percent=65.5,
+        machinability_source="xometry delta-quote calibration (2026-03-05): (704-300)/(209-111)=4.122x vs 6061",
+        baseline_billet_cost_eur_per_kg=23.33,
+        baseline_billet_cost_source="xometry no-pocket two-point fit (2026-03-05)",
+        baseline_fixed_stock_cost_eur=160.5,
+        baseline_fixed_stock_cost_source="xometry no-pocket two-point fit (2026-03-05)",
     ),
 ]
 

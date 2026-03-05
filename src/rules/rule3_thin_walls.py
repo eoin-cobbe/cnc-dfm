@@ -161,11 +161,6 @@ def evaluate_thin_walls(shape: TopoDS_Shape, cfg: Config) -> RuleResult:
         axis_breakdown[axis] = (axis_detected, axis_pass, axis_fail)
 
     if not thicknesses:
-        rule_mult = rule_multiplier_from_threshold(
-            average_detected=0.0,
-            threshold=cfg.min_wall_thickness_mm,
-            threshold_kind="min",
-        )
         return RuleResult(
             name="Rule 3 — Wall Thickness",
             passed=True,
@@ -179,7 +174,7 @@ def evaluate_thin_walls(shape: TopoDS_Shape, cfg: Config) -> RuleResult:
             average_detected=0.0,
             threshold=cfg.min_wall_thickness_mm,
             threshold_kind="min",
-            rule_multiplier=rule_mult,
+            rule_multiplier=1.0,
         )
 
     thinnest = min(thicknesses)

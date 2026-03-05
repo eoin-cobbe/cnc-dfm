@@ -35,8 +35,6 @@ usage: dfm_check.py [-h] [--qty QTY] [--min-radius MIN_RADIUS]
                     [--radius-count-penalty-max-multiplier RADIUS_COUNT_PENALTY_MAX_MULTIPLIER]
                     [--qty-learning-rate QTY_LEARNING_RATE]
                     [--qty-factor-floor QTY_FACTOR_FLOOR]
-                    [--material-qty-discount-rate MATERIAL_QTY_DISCOUNT_RATE]
-                    [--material-qty-discount-floor MATERIAL_QTY_DISCOUNT_FLOOR]
                     step_file
 
 CLI DFM checker for STEP files (pythonOCC).
@@ -93,11 +91,6 @@ options:
                         10% reduction per quantity doubling)
   --qty-factor-floor QTY_FACTOR_FLOOR
                         Minimum quantity multiplier floor
-  --material-qty-discount-rate MATERIAL_QTY_DISCOUNT_RATE
-                        Material discount rate for quantity scaling (e.g.,
-                        0.97 means 3% reduction per quantity doubling)
-  --material-qty-discount-floor MATERIAL_QTY_DISCOUNT_FLOOR
-                        Minimum material discount multiplier floor
 ```
 
 ## Config CLI (src/dfm_config.py --help)

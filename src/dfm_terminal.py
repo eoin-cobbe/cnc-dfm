@@ -84,12 +84,8 @@ def print_part_process_data(data: PartProcessData) -> None:
         f"{paint('BILLET COST', Ansi.BOLD, Ansi.BLUE)}  "
         f"{data.material_billet_cost_eur_per_kg:.2f} EUR/kg"
     )
+    print(f"{paint('MATERIAL FIXED COST', Ansi.BOLD, Ansi.BLUE)}  {data.material_fixed_cost_eur:.2f} EUR")
     print(f"{paint('STOCK MATERIAL COST', Ansi.BOLD, Ansi.BLUE)}  {data.material_stock_cost_eur:.2f} EUR")
-    print(f"{paint('MATERIAL DISCOUNT MULT', Ansi.BOLD, Ansi.BLUE)}  {data.material_discount_multiplier:.3f}x")
-    print(
-        f"{paint('DISCOUNTED MATERIAL COST', Ansi.BOLD, Ansi.BLUE)}  "
-        f"{data.discounted_material_stock_cost_eur:.2f} EUR"
-    )
     print(f"{paint('SETUP DIRECTIONS', Ansi.BOLD, Ansi.BLUE)}  {data.required_setup_directions}")
     print(f"{paint('MACHINE TYPE', Ansi.BOLD, Ansi.BLUE)}  {data.machine_type}")
     print(f"{paint('HOLE COUNT', Ansi.BOLD, Ansi.BLUE)}  {data.hole_count}")
@@ -119,6 +115,7 @@ def print_part_process_data(data: PartProcessData) -> None:
     print(f"{paint('UNIT EST. COST', Ansi.BOLD, Ansi.BLUE)}  {data.total_estimated_cost_eur:.2f} EUR")
     print(f"{paint('BATCH EST. COST', Ansi.BOLD, Ansi.BLUE)}  {data.batch_total_estimated_cost_eur:.2f} EUR")
     print(f"{paint('BILLET COST SOURCE', Ansi.DIM)}  {data.material_billet_cost_source}")
+    print(f"{paint('MATERIAL FIXED SOURCE', Ansi.DIM)}  {data.material_fixed_cost_source}")
     print(f"{paint('MACHINABILITY SOURCE', Ansi.DIM)}  {data.machinability_source}")
     print(paint("-" * 72, Ansi.GRAY))
 
