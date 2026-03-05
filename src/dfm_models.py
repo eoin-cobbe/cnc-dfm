@@ -39,6 +39,9 @@ class Config:
     material_billet_cost_eur_per_kg: float = 11.49
     surface_penalty_slope: float = 0.15
     surface_penalty_max_multiplier: float = 1.5
+    complexity_penalty_per_face: float = 0.002
+    complexity_penalty_max_multiplier: float = 1.5
+    complexity_baseline_faces: int = 6
     hole_count_penalty_per_feature: float = 0.01
     hole_count_penalty_max_multiplier: float = 1.5
     radius_count_penalty_per_feature: float = 0.005
@@ -63,8 +66,10 @@ class PartProcessData:
     part_surface_area_mm2: float
     part_sav_ratio: float
     bbox_sav_ratio: float
-    surface_complexity_ratio: float
-    finish_multiplier: float
+    surface_area_ratio: float
+    surface_area_multiplier: float
+    surface_complexity_faces: int
+    complexity_multiplier: float
     density_kg_per_m3: float
     mass_kg: float
     stock_mass_kg: float
@@ -79,7 +84,7 @@ class PartProcessData:
     hole_count_multiplier: float
     radius_count: int
     radius_count_multiplier: float
-    machinability_percent: float
+    machinability_index: float
     machinability_source: str
     baseline_6061_mrr_mm3_per_min: float
     material_time_multiplier: float

@@ -9,7 +9,7 @@ class MaterialSpec:
     key: str
     label: str
     density_kg_per_m3: float
-    machinability_percent: float
+    machinability_index: float
     machinability_source: str
     baseline_billet_cost_eur_per_kg: float
     baseline_billet_cost_source: str
@@ -22,7 +22,7 @@ MATERIAL_OPTIONS: List[MaterialSpec] = [
         key="304_stainless_steel",
         label="304 stainless steel",
         density_kg_per_m3=7930.0,
-        machinability_percent=125.4,
+        machinability_index=0.4644444444,
         machinability_source="xometry delta-quote calibration (2026-03-05): (421-210)/(209-111)=2.153x vs 6061",
         baseline_billet_cost_eur_per_kg=11.49,
         baseline_billet_cost_source="xometry no-pocket two-point fit (2026-03-05)",
@@ -33,7 +33,7 @@ MATERIAL_OPTIONS: List[MaterialSpec] = [
         key="6061_aluminium",
         label="6061 aluminium",
         density_kg_per_m3=2700.0,
-        machinability_percent=270.0,
+        machinability_index=1.0,
         machinability_source="https://www.machiningdoctor.com/mds/?matId=3850",
         baseline_billet_cost_eur_per_kg=16.46,
         baseline_billet_cost_source="xometry no-pocket two-point fit (2026-03-05)",
@@ -44,7 +44,7 @@ MATERIAL_OPTIONS: List[MaterialSpec] = [
         key="1080_steel",
         label="1080 steel",
         density_kg_per_m3=7850.0,
-        machinability_percent=224.2,
+        machinability_index=0.8303703704,
         machinability_source="xometry delta-quote calibration (2026-03-05): (244-126)/(209-111)=1.204x vs 6061",
         baseline_billet_cost_eur_per_kg=6.65,
         baseline_billet_cost_source="xometry no-pocket two-point fit (2026-03-05)",
@@ -55,7 +55,7 @@ MATERIAL_OPTIONS: List[MaterialSpec] = [
         key="grade_5_titanium",
         label="Grade 5 titanium",
         density_kg_per_m3=4430.0,
-        machinability_percent=65.5,
+        machinability_index=0.2425925926,
         machinability_source="xometry delta-quote calibration (2026-03-05): (704-300)/(209-111)=4.122x vs 6061",
         baseline_billet_cost_eur_per_kg=23.33,
         baseline_billet_cost_source="xometry no-pocket two-point fit (2026-03-05)",
