@@ -49,16 +49,20 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="CLI DFM checker for STEP files (pythonOCC).")
     parser.add_argument("step_file", help="Path to input STEP file")
     parser.add_argument("--qty", type=int, default=1, help="Batch quantity for learning-curve scaling")
-    parser.add_argument("--min-radius", type=float, default=1.0, help="Rule 1 min internal radius (mm)")
+    parser.add_argument(
+        "--min-radius",
+        type=float,
+        default=2.0,
+        help="Rule 1 recommended min internal radius (mm); pass floor is fixed at 0.8 mm",
+    )
     parser.add_argument("--max-pocket-ratio", type=float, default=4.0, help="Rule 2 max pocket depth ratio")
-    parser.add_argument("--min-wall", type=float, default=1.0, help="Rule 3 min wall thickness (mm)")
-    parser.add_argument("--max-hole-ratio", type=float, default=6.0, help="Rule 4 max hole depth/diameter ratio")
+    parser.add_argument("--min-wall", type=float, default=0.762, help="Rule 3 min wall thickness (mm)")
+    parser.add_argument("--max-hole-ratio", type=float, default=4.0, help="Rule 4 max hole depth/diameter ratio")
     parser.add_argument("--max-setups", type=int, default=2, help="Rule 5 max setup faces/axes")
-    parser.add_argument("--tool-diameter", type=float, default=6.0, help="Rule 6 tool diameter (mm)")
     parser.add_argument(
         "--max-tool-depth-ratio",
         type=float,
-        default=3.0,
+        default=2.0,
         help="Rule 6 max pocket depth/tool diameter ratio",
     )
     parser.add_argument(
@@ -300,7 +304,6 @@ def main() -> int:
     cfg = Config(
         min_internal_corner_radius_mm=args.min_radius,
         max_pocket_depth_ratio=args.max_pocket_ratio,
-        tool_diameter_mm=args.tool_diameter,
         max_tool_depth_to_diameter_ratio=args.max_tool_depth_ratio,
         min_wall_thickness_mm=args.min_wall,
         max_hole_depth_to_diameter=args.max_hole_ratio,

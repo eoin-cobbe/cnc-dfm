@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import os
 import re
+import shutil
 from typing import List
 
 from dfm_models import PartProcessData, RuleResult
@@ -60,63 +61,106 @@ def print_boot(step_file: str) -> None:
     print("")
 
 
+def _print_two_column_rows(rows: List[tuple[str, str]], label_width: int = 24, gap: int = 4) -> None:
+    term_width = shutil.get_terminal_size((120, 24)).columns
+    content_width = max(60, term_width - 2)
+    col_width = max(28, (content_width - gap) // 2)
+    for i in range(0, len(rows), 2):
+        left_label, left_value = rows[i]
+        left_raw = f"{left_label:<{label_width}} {left_value}"
+        if i + 1 < len(rows):
+            right_label, right_value = rows[i + 1]
+            right_raw = f"{right_label:<{label_width}} {right_value}"
+            if len(left_raw) <= col_width and len(right_raw) <= col_width:
+                print(f"  {left_raw.ljust(col_width)}{' ' * gap}{right_raw.ljust(col_width)}")
+            else:
+                print(f"  {left_raw}")
+                print(f"  {right_raw}")
+        else:
+            print(f"  {left_raw}")
+
+
+def _print_single_column_rows(rows: List[tuple[str, str]], label_width: int = 38) -> None:
+    for label, value in rows:
+        print(f"  {label:<{label_width}} {value}")
+
+
+def _print_section(title: str, rows: List[tuple[str, str]]) -> None:
+    print(f"{paint(title, Ansi.BOLD, Ansi.BLUE)}")
+    _print_two_column_rows(rows)
+    print("")
+
+
 def print_part_process_data(data: PartProcessData) -> None:
-    print(f"{paint('MATERIAL', Ansi.BOLD, Ansi.BLUE)}  {data.material_label}")
-    print(
-        f"{paint('PART BBOX', Ansi.BOLD, Ansi.BLUE)}  "
-        f"{data.part_bbox_x_mm:.2f} x {data.part_bbox_y_mm:.2f} x {data.part_bbox_z_mm:.2f} mm"
+    _print_section(
+        "FACTS",
+        [
+            ("MATERIAL", data.material_label),
+            ("MACHINE TYPE", data.machine_type),
+            (
+                "PART BBOX",
+                f"{data.part_bbox_x_mm:.2f} x {data.part_bbox_y_mm:.2f} x {data.part_bbox_z_mm:.2f} mm",
+            ),
+            (
+                "STOCK BBOX (+10/axis)",
+                f"{data.stock_bbox_x_mm:.2f} x {data.stock_bbox_y_mm:.2f} x {data.stock_bbox_z_mm:.2f} mm",
+            ),
+            ("VOLUME", f"{data.volume_mm3:.2f} mm^3"),
+            ("STOCK VOLUME", f"{data.stock_volume_mm3:.2f} mm^3"),
+            ("REMOVED VOLUME", f"{data.removed_volume_mm3:.2f} mm^3"),
+            ("PART SURFACE AREA", f"{data.part_surface_area_mm2:.2f} mm^2"),
+            ("PART SA/V", f"{data.part_sav_ratio:.6f} 1/mm"),
+            ("BBOX SA/V", f"{data.bbox_sav_ratio:.6f} 1/mm"),
+            ("MASS", f"{data.mass_kg:.4f} kg"),
+            ("STOCK MASS", f"{data.stock_mass_kg:.4f} kg"),
+            ("SETUP DIRECTIONS", data.required_setup_directions),
+            ("QTY", str(data.qty)),
+        ],
     )
-    print(
-        f"{paint('STOCK BBOX (+10/axis)', Ansi.BOLD, Ansi.BLUE)}  "
-        f"{data.stock_bbox_x_mm:.2f} x {data.stock_bbox_y_mm:.2f} x {data.stock_bbox_z_mm:.2f} mm"
+    _print_section(
+        "PRE-MULTIPLIER DRIVERS",
+        [
+            ("SURFACE COMPLEXITY", f"{data.surface_complexity_ratio:.3f}x"),
+            ("HOLE COUNT", str(data.hole_count)),
+            ("RADIUS COUNT", str(data.radius_count)),
+            ("MACHINABILITY", f"{data.machinability_percent:.1f}%"),
+            ("BASELINE 6061 MRR", f"{data.baseline_6061_mrr_mm3_per_min:.2f} mm^3/min"),
+            ("EST. ROUGHING MRR", f"{data.estimated_roughing_mrr_mm3_per_min:.2f} mm^3/min"),
+        ],
     )
-    print(f"{paint('VOLUME', Ansi.BOLD, Ansi.BLUE)}  {data.volume_mm3:.2f} mm^3")
-    print(f"{paint('STOCK VOLUME', Ansi.BOLD, Ansi.BLUE)}  {data.stock_volume_mm3:.2f} mm^3")
-    print(f"{paint('REMOVED VOLUME', Ansi.BOLD, Ansi.BLUE)}  {data.removed_volume_mm3:.2f} mm^3")
-    print(f"{paint('PART SURFACE AREA', Ansi.BOLD, Ansi.BLUE)}  {data.part_surface_area_mm2:.2f} mm^2")
-    print(f"{paint('PART SA/V', Ansi.BOLD, Ansi.BLUE)}  {data.part_sav_ratio:.6f} 1/mm")
-    print(f"{paint('BBOX SA/V', Ansi.BOLD, Ansi.BLUE)}  {data.bbox_sav_ratio:.6f} 1/mm")
-    print(f"{paint('SURFACE COMPLEXITY', Ansi.BOLD, Ansi.BLUE)}  {data.surface_complexity_ratio:.3f}x")
-    print(f"{paint('FINISH MULTIPLIER', Ansi.BOLD, Ansi.BLUE)}  {data.finish_multiplier:.3f}x")
-    print(f"{paint('MASS', Ansi.BOLD, Ansi.BLUE)}  {data.mass_kg:.4f} kg")
-    print(f"{paint('STOCK MASS', Ansi.BOLD, Ansi.BLUE)}  {data.stock_mass_kg:.4f} kg")
-    print(
-        f"{paint('BILLET COST', Ansi.BOLD, Ansi.BLUE)}  "
-        f"{data.material_billet_cost_eur_per_kg:.2f} EUR/kg"
+    _print_section(
+        "MULTIPLIERS",
+        [
+            ("FINISH MULTIPLIER", f"{data.finish_multiplier:.3f}x"),
+            ("HOLE MULTIPLIER", f"{data.hole_count_multiplier:.3f}x"),
+            ("RADIUS MULTIPLIER", f"{data.radius_count_multiplier:.3f}x"),
+            ("MATERIAL MULTIPLIER", f"{data.material_time_multiplier:.3f}x"),
+            ("RULE MULTIPLIER", f"{data.rule_multiplier:.3f}x"),
+            ("TOTAL TIME MULT", paint(f"{data.total_time_multiplier:.3f}x", Ansi.BOLD)),
+            ("QTY MULTIPLIER", f"{data.qty_multiplier:.3f}x"),
+        ],
     )
-    print(f"{paint('MATERIAL FIXED COST', Ansi.BOLD, Ansi.BLUE)}  {data.material_fixed_cost_eur:.2f} EUR")
-    print(f"{paint('STOCK MATERIAL COST', Ansi.BOLD, Ansi.BLUE)}  {data.material_stock_cost_eur:.2f} EUR")
-    print(f"{paint('SETUP DIRECTIONS', Ansi.BOLD, Ansi.BLUE)}  {data.required_setup_directions}")
-    print(f"{paint('MACHINE TYPE', Ansi.BOLD, Ansi.BLUE)}  {data.machine_type}")
-    print(f"{paint('HOLE COUNT', Ansi.BOLD, Ansi.BLUE)}  {data.hole_count}")
-    print(f"{paint('HOLE MULTIPLIER', Ansi.BOLD, Ansi.BLUE)}  {data.hole_count_multiplier:.3f}x")
-    print(f"{paint('RADIUS COUNT', Ansi.BOLD, Ansi.BLUE)}  {data.radius_count}")
-    print(f"{paint('RADIUS MULTIPLIER', Ansi.BOLD, Ansi.BLUE)}  {data.radius_count_multiplier:.3f}x")
-    print(f"{paint('MACHINABILITY', Ansi.BOLD, Ansi.BLUE)}  {data.machinability_percent:.1f}%")
-    print(
-        f"{paint('BASELINE 6061 MRR', Ansi.BOLD, Ansi.BLUE)}  "
-        f"{data.baseline_6061_mrr_mm3_per_min:.2f} mm^3/min"
+    _print_section(
+        "POST-MULTIPLIER OUTPUTS",
+        [
+            ("ROUGHING TIME", f"{data.roughing_time_min:.2f} min"),
+            ("BASE MACHINING TIME", f"{data.base_machining_time_min:.2f} min"),
+            ("MACHINING TIME", f"{data.machining_time_min:.2f} min"),
+            ("MACHINE RATE", f"{data.machine_hourly_rate_eur:.2f} EUR/hr"),
+        ],
     )
-    print(
-        f"{paint('EST. ROUGHING MRR', Ansi.BOLD, Ansi.BLUE)}  "
-        f"{data.estimated_roughing_mrr_mm3_per_min:.2f} mm^3/min"
+    print(f"{paint('COSTS', Ansi.BOLD, Ansi.BLUE)}")
+    _print_single_column_rows(
+        [
+            ("RAW MATERIAL RATE", f"{data.material_billet_cost_eur_per_kg:.2f} EUR/kg"),
+            ("MATERIAL BASE FEE (PER PART - PRE QTY)", f"{data.material_fixed_cost_eur:.2f} EUR"),
+            ("MATERIAL TOTAL (PER PART - PRE QTY)", f"{data.material_stock_cost_eur:.2f} EUR"),
+            ("UNIT EST. COST", f"{data.total_estimated_cost_eur:.2f} EUR"),
+            ("BATCH EST. COST", f"{data.batch_total_estimated_cost_eur:.2f} EUR"),
+        ]
     )
-    print(f"{paint('MATERIAL MULTIPLIER', Ansi.BOLD, Ansi.BLUE)}  {data.material_time_multiplier:.3f}x")
-    print(f"{paint('RULE MULTIPLIER', Ansi.BOLD, Ansi.BLUE)}  {data.rule_multiplier:.3f}x")
-    print(f"{paint('TOTAL TIME MULT', Ansi.BOLD, Ansi.BLUE)}  {data.total_time_multiplier:.3f}x")
-    print(f"{paint('QTY', Ansi.BOLD, Ansi.BLUE)}  {data.qty}")
-    print(f"{paint('QTY MULTIPLIER', Ansi.BOLD, Ansi.BLUE)}  {data.qty_multiplier:.3f}x")
-    print(f"{paint('ROUGHING TIME', Ansi.BOLD, Ansi.BLUE)}  {data.roughing_time_min:.2f} min")
-    print(f"{paint('BASE MACHINING TIME', Ansi.BOLD, Ansi.BLUE)}  {data.base_machining_time_min:.2f} min")
-    print(f"{paint('MACHINING TIME', Ansi.BOLD, Ansi.BLUE)}  {data.machining_time_min:.2f} min")
-    print(f"{paint('MACHINE RATE', Ansi.BOLD, Ansi.BLUE)}  {data.machine_hourly_rate_eur:.2f} EUR/hr")
-    print(f"{paint('ROUGHING COST', Ansi.BOLD, Ansi.BLUE)}  {data.roughing_cost:.2f} EUR")
-    print(f"{paint('MACHINING COST', Ansi.BOLD, Ansi.BLUE)}  {data.machining_cost:.2f} EUR")
-    print(f"{paint('UNIT EST. COST', Ansi.BOLD, Ansi.BLUE)}  {data.total_estimated_cost_eur:.2f} EUR")
-    print(f"{paint('BATCH EST. COST', Ansi.BOLD, Ansi.BLUE)}  {data.batch_total_estimated_cost_eur:.2f} EUR")
-    print(f"{paint('BILLET COST SOURCE', Ansi.DIM)}  {data.material_billet_cost_source}")
-    print(f"{paint('MATERIAL FIXED SOURCE', Ansi.DIM)}  {data.material_fixed_cost_source}")
-    print(f"{paint('MACHINABILITY SOURCE', Ansi.DIM)}  {data.machinability_source}")
+    print("")
+
     print(paint("-" * 72, Ansi.GRAY))
 
 

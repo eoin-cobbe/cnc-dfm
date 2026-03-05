@@ -21,6 +21,10 @@ from dfm_geometry import (
 from dfm_models import Config, RuleResult
 from dfm_scoring import rule_multiplier_from_threshold
 
+R1_ABSOLUTE_PASS_RADIUS_MM = 0.8
+R1_NEAR_MIN_RADIUS_MM = 2.0
+R1_MAX_MULTIPLIER = 5.0
+
 
 def detect_internal_corner_radii(shape: TopoDS_Shape) -> Dict[str, List[float]]:
     edge_face_map = get_edge_face_map(shape)
@@ -228,6 +232,7 @@ def detect_internal_corner_features(shape: TopoDS_Shape) -> Dict[str, List[dict]
 def evaluate_internal_corner_radius(shape: TopoDS_Shape, cfg: Config) -> RuleResult:
     radii_by_axis = detect_internal_corner_radii(shape)
     feature_radii: List[float] = []
+    recommended_min_radius_mm = cfg.min_internal_corner_radius_mm
     axis_breakdown: Dict[str, Tuple[int, int, int]] = {
         "X": (0, 0, 0),
         "Y": (0, 0, 0),
@@ -236,7 +241,7 @@ def evaluate_internal_corner_radius(shape: TopoDS_Shape, cfg: Config) -> RuleRes
 
     for axis_name, axis_radii in radii_by_axis.items():
         axis_detected = len(axis_radii)
-        axis_pass = sum(1 for r in axis_radii if r >= cfg.min_internal_corner_radius_mm)
+        axis_pass = sum(1 for r in axis_radii if r >= R1_ABSOLUTE_PASS_RADIUS_MM)
         axis_fail = axis_detected - axis_pass
 
         feature_radii.extend(axis_radii)
@@ -252,10 +257,10 @@ def evaluate_internal_corner_radius(shape: TopoDS_Shape, cfg: Config) -> RuleRes
             passed_features=0,
             failed_features=0,
             axis_breakdown=axis_breakdown,
-            required_minimum=cfg.min_internal_corner_radius_mm,
+            required_minimum=R1_ABSOLUTE_PASS_RADIUS_MM,
             metric_label="Radius (mm)",
             average_detected=0.0,
-            threshold=cfg.min_internal_corner_radius_mm,
+            threshold=R1_ABSOLUTE_PASS_RADIUS_MM,
             threshold_kind="min",
             rule_multiplier=1.0,
         )
@@ -264,28 +269,39 @@ def evaluate_internal_corner_radius(shape: TopoDS_Shape, cfg: Config) -> RuleRes
     avg_radius = sum(feature_radii) / len(feature_radii)
     rule_mult = rule_multiplier_from_threshold(
         average_detected=avg_radius,
-        threshold=cfg.min_internal_corner_radius_mm,
+        threshold=recommended_min_radius_mm,
         threshold_kind="min",
+        slope=1.25,
+        max_multiplier=R1_MAX_MULTIPLIER,
     )
-    pass_count = sum(1 for r in feature_radii if r >= cfg.min_internal_corner_radius_mm)
+    pass_count = sum(1 for r in feature_radii if r >= R1_ABSOLUTE_PASS_RADIUS_MM)
     fail_count = len(feature_radii) - pass_count
+    near_min_count = sum(1 for r in feature_radii if r < R1_NEAR_MIN_RADIUS_MM)
+    if fail_count > 0:
+        fail_fraction = fail_count / len(feature_radii)
+        rule_mult = min(R1_MAX_MULTIPLIER, max(rule_mult, 1.0 + (4.0 * fail_fraction)))
+    if near_min_count > 0:
+        near_min_fraction = near_min_count / len(feature_radii)
+        rule_mult = min(R1_MAX_MULTIPLIER, max(rule_mult, 1.0 + (2.5 * near_min_fraction)))
     passed = fail_count == 0
     return RuleResult(
         name="Rule 1 — Internal Corner Radius Too Small",
         passed=passed,
         summary="PASS" if passed else "FAIL",
         details=(
-            "Internal corner radii evaluated."
+            f"Pass floor is {R1_ABSOLUTE_PASS_RADIUS_MM:.2f} mm; "
+            f"recommended target is {recommended_min_radius_mm:.2f} mm. "
+            f"{near_min_count} feature(s) are below {R1_NEAR_MIN_RADIUS_MM:.2f} mm and incur stronger penalty."
         ),
         detected_features=len(feature_radii),
         passed_features=pass_count,
         failed_features=fail_count,
         axis_breakdown=axis_breakdown,
         minimum_detected=min_radius,
-        required_minimum=cfg.min_internal_corner_radius_mm,
+        required_minimum=R1_ABSOLUTE_PASS_RADIUS_MM,
         metric_label="Radius (mm)",
         average_detected=avg_radius,
-        threshold=cfg.min_internal_corner_radius_mm,
+        threshold=R1_ABSOLUTE_PASS_RADIUS_MM,
         threshold_kind="min",
         rule_multiplier=rule_mult,
     )

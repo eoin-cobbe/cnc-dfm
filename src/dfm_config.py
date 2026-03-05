@@ -10,12 +10,11 @@ from typing import Any, Dict, List, Tuple
 from dfm_materials import DEFAULT_MATERIAL_KEY, MATERIAL_OPTIONS, get_material
 
 DEFAULTS = {
-    "min_radius": 1.0,
+    "min_radius": 2.0,
     "max_pocket_ratio": 4.0,
-    "tool_diameter": 6.0,
-    "max_tool_depth_ratio": 3.0,
-    "min_wall": 1.0,
-    "max_hole_ratio": 6.0,
+    "max_tool_depth_ratio": 2.0,
+    "min_wall": 0.762,
+    "max_hole_ratio": 4.0,
     "max_setups": 2,
     "material": DEFAULT_MATERIAL_KEY,
     "baseline_6061_mrr": 20000.0,
@@ -33,12 +32,11 @@ DEFAULTS = {
 }
 
 FIELDS: List[Tuple[str, str, str, str]] = [
-    ("min_radius", "Rule 1", "Min internal corner radius (mm)", "float"),
+    ("min_radius", "Rule 1", "Recommended min internal corner radius (mm)", "float"),
     ("max_pocket_ratio", "Rule 2", "Max pocket depth ratio", "float"),
     ("min_wall", "Rule 3", "Min wall thickness (mm)", "float"),
     ("max_hole_ratio", "Rule 4", "Max hole depth/diameter ratio", "float"),
     ("max_setups", "Rule 5", "Max setup faces/axes", "int"),
-    ("tool_diameter", "Rule 6", "Tool diameter (mm)", "float"),
     ("max_tool_depth_ratio", "Rule 6", "Max pocket depth/tool diameter ratio", "float"),
     ("material", "Part", "Material", "material"),
     ("material_billet_cost_eur_per_kg", "Part", "Material billet cost (EUR/kg)", "float"),
@@ -58,7 +56,6 @@ FIELDS: List[Tuple[str, str, str, str]] = [
 CLI_FLAGS = {
     "min_radius": "--min-radius",
     "max_pocket_ratio": "--max-pocket-ratio",
-    "tool_diameter": "--tool-diameter",
     "max_tool_depth_ratio": "--max-tool-depth-ratio",
     "min_wall": "--min-wall",
     "max_hole_ratio": "--max-hole-ratio",

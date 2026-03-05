@@ -10,9 +10,22 @@ from dfm_scoring import rule_multiplier_from_threshold
 from .rule1_internal_corner_radius import detect_internal_corner_features
 from .rule2_deep_pocket_ratio import _group_corner_features_by_depth, _split_depth_layer_into_pockets
 
+R6_EDGE_TO_TOOL_RADIUS_FACTOR = 1.3
+
 
 def evaluate_tool_depth_to_diameter(shape: TopoDS_Shape, cfg: Config) -> RuleResult:
     features_by_axis = detect_internal_corner_features(shape)
+    all_radii = [
+        float(feature["radius"])
+        for axis_features in features_by_axis.values()
+        for feature in axis_features
+        if float(feature["radius"]) > precision.Confusion()
+    ]
+    inferred_min_edge_radius = min(all_radii) if all_radii else None
+    inferred_tool_diameter = None
+    if inferred_min_edge_radius is not None:
+        inferred_tool_diameter = (2.0 * inferred_min_edge_radius) / R6_EDGE_TO_TOOL_RADIUS_FACTOR
+
     axis_breakdown: Dict[str, Tuple[int, int, int]] = {}
     detected = 0
     offenders = 0
@@ -32,8 +45,11 @@ def evaluate_tool_depth_to_diameter(shape: TopoDS_Shape, cfg: Config) -> RuleRes
                 if depth <= precision.Confusion():
                     continue
 
+                if inferred_tool_diameter is None or inferred_tool_diameter <= precision.Confusion():
+                    continue
+
                 axis_detected += 1
-                ratio = depth / cfg.tool_diameter_mm
+                ratio = depth / inferred_tool_diameter
                 ratios.append(ratio)
                 worst_ratio = max(worst_ratio, ratio)
                 if ratio > cfg.max_tool_depth_to_diameter_ratio:
@@ -56,7 +72,9 @@ def evaluate_tool_depth_to_diameter(shape: TopoDS_Shape, cfg: Config) -> RuleRes
     details = (
         f"Worst pocket depth/tool diameter ratio is {worst_ratio:.2f}; "
         f"maximum allowed is {cfg.max_tool_depth_to_diameter_ratio:.2f}. "
-        f"Using configured tool diameter {cfg.tool_diameter_mm:.2f} mm. "
+        f"Using inferred tool diameter {0.0 if inferred_tool_diameter is None else inferred_tool_diameter:.2f} mm "
+        f"from minimum detected edge radius {0.0 if inferred_min_edge_radius is None else inferred_min_edge_radius:.2f} mm "
+        f"with R_edge = {R6_EDGE_TO_TOOL_RADIUS_FACTOR:.1f} * R_tool. "
         f"Pockets use the same internal-pocket detection as Rule 2."
     )
     if offenders > 0:

@@ -25,13 +25,12 @@ class RuleResult:
 
 @dataclass
 class Config:
-    min_internal_corner_radius_mm: float = 6.0
+    min_internal_corner_radius_mm: float = 2.0
     max_pocket_depth_ratio: float = 4.0
-    min_wall_thickness_mm: float = 1.0
-    max_hole_depth_to_diameter: float = 6.0
+    min_wall_thickness_mm: float = 0.762
+    max_hole_depth_to_diameter: float = 4.0
     max_setups: int = 2
-    tool_diameter_mm: float = 6.0
-    max_tool_depth_to_diameter_ratio: float = 3.0
+    max_tool_depth_to_diameter_ratio: float = 2.0
     normal_similarity_deg: float = 12.0
     material_key: str = "304_stainless_steel"
     baseline_6061_mrr_mm3_per_min: float = 20000.0
