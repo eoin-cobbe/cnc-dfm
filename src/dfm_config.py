@@ -10,7 +10,7 @@ from typing import Any, Dict, List, Tuple
 from dfm_materials import DEFAULT_MATERIAL_KEY, MATERIAL_OPTIONS, get_material
 
 DEFAULTS = {
-    "min_radius": 2.0,
+    "min_radius": 0.8,
     "max_pocket_ratio": 4.0,
     "max_tool_depth_ratio": 2.0,
     "min_wall": 0.762,

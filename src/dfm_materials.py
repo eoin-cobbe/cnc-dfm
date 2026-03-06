@@ -19,17 +19,6 @@ class MaterialSpec:
 
 MATERIAL_OPTIONS: List[MaterialSpec] = [
     MaterialSpec(
-        key="304_stainless_steel",
-        label="304 stainless steel",
-        density_kg_per_m3=7930.0,
-        machinability_index=0.4644444444,
-        machinability_source="xometry delta-quote calibration (2026-03-05): (421-210)/(209-111)=2.153x vs 6061",
-        baseline_billet_cost_eur_per_kg=11.49,
-        baseline_billet_cost_source="xometry no-pocket two-point fit (2026-03-05)",
-        baseline_fixed_stock_cost_eur=87.0,
-        baseline_fixed_stock_cost_source="xometry no-pocket two-point fit (2026-03-05)",
-    ),
-    MaterialSpec(
         key="6061_aluminium",
         label="6061 aluminium",
         density_kg_per_m3=2700.0,
@@ -40,6 +29,19 @@ MATERIAL_OPTIONS: List[MaterialSpec] = [
         baseline_fixed_stock_cost_eur=51.0,
         baseline_fixed_stock_cost_source="xometry no-pocket two-point fit (2026-03-05)",
     ),
+    
+    MaterialSpec(
+        key="304_stainless_steel",
+        label="304 stainless steel",
+        density_kg_per_m3=7930.0,
+        machinability_index=0.4644444444,
+        machinability_source="xometry delta-quote calibration (2026-03-05): (421-210)/(209-111)=2.153x vs 6061",
+        baseline_billet_cost_eur_per_kg=11.49,
+        baseline_billet_cost_source="xometry no-pocket two-point fit (2026-03-05)",
+        baseline_fixed_stock_cost_eur=87.0,
+        baseline_fixed_stock_cost_source="xometry no-pocket two-point fit (2026-03-05)",
+    ),
+    
     MaterialSpec(
         key="1080_steel",
         label="1080 steel",
