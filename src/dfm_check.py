@@ -11,7 +11,7 @@ from OCC.Core.TopoDS import TopoDS_Shape
 
 from dfm_geometry import read_step, shape_bbox, shape_surface_area_mm2, shape_volume_mm3
 from dfm_materials import get_material, material_keys
-from dfm_models import Config, PartProcessData, RuleResult
+from dfm_models import AnalysisResult, AnalysisSummary, Config, PartProcessData, RuleResult
 from dfm_terminal import print_boot, print_part_process_data, print_report
 from rules.rule5_multiple_setup_faces import required_setup_directions
 from rules import (
@@ -45,6 +45,39 @@ def combined_rule_multiplier(results: List[RuleResult]) -> float:
     for result in results:
         mult *= max(1.0, result.rule_multiplier)
     return mult
+
+
+def build_config_from_args(args: argparse.Namespace) -> Config:
+    selected_material = get_material(args.material)
+    resolved_billet_cost = (
+        args.material_billet_cost_eur_per_kg
+        if args.material_billet_cost_eur_per_kg is not None
+        else selected_material.baseline_billet_cost_eur_per_kg
+    )
+    return Config(
+        min_internal_corner_radius_mm=args.min_radius,
+        max_pocket_depth_ratio=args.max_pocket_ratio,
+        max_tool_depth_to_diameter_ratio=args.max_tool_depth_ratio,
+        min_wall_thickness_mm=args.min_wall,
+        max_hole_depth_to_diameter=args.max_hole_ratio,
+        max_setups=args.max_setups,
+        material_key=args.material,
+        baseline_6061_mrr_mm3_per_min=args.baseline_6061_mrr,
+        machine_hourly_rate_3_axis_eur=args.machine_hourly_rate_3_axis_eur,
+        machine_hourly_rate_5_axis_eur=args.machine_hourly_rate_5_axis_eur,
+        material_billet_cost_eur_per_kg=resolved_billet_cost,
+        surface_penalty_slope=args.surface_penalty_slope,
+        surface_penalty_max_multiplier=args.surface_penalty_max_multiplier,
+        complexity_penalty_per_face=args.complexity_penalty_per_face,
+        complexity_penalty_max_multiplier=args.complexity_penalty_max_multiplier,
+        complexity_baseline_faces=args.complexity_baseline_faces,
+        hole_count_penalty_per_feature=args.hole_count_penalty_per_feature,
+        hole_count_penalty_max_multiplier=args.hole_count_penalty_max_multiplier,
+        radius_count_penalty_per_feature=args.radius_count_penalty_per_feature,
+        radius_count_penalty_max_multiplier=args.radius_count_penalty_max_multiplier,
+        qty_learning_rate=args.qty_learning_rate,
+        qty_factor_floor=args.qty_factor_floor,
+    )
 
 
 def build_arg_parser() -> argparse.ArgumentParser:
@@ -329,40 +362,8 @@ def compute_part_process_data(
     )
 
 
-def main() -> int:
-    args = build_arg_parser().parse_args()
-    selected_material = get_material(args.material)
-    resolved_billet_cost = (
-        args.material_billet_cost_eur_per_kg
-        if args.material_billet_cost_eur_per_kg is not None
-        else selected_material.baseline_billet_cost_eur_per_kg
-    )
-    cfg = Config(
-        min_internal_corner_radius_mm=args.min_radius,
-        max_pocket_depth_ratio=args.max_pocket_ratio,
-        max_tool_depth_to_diameter_ratio=args.max_tool_depth_ratio,
-        min_wall_thickness_mm=args.min_wall,
-        max_hole_depth_to_diameter=args.max_hole_ratio,
-        max_setups=args.max_setups,
-        material_key=args.material,
-        baseline_6061_mrr_mm3_per_min=args.baseline_6061_mrr,
-        machine_hourly_rate_3_axis_eur=args.machine_hourly_rate_3_axis_eur,
-        machine_hourly_rate_5_axis_eur=args.machine_hourly_rate_5_axis_eur,
-        material_billet_cost_eur_per_kg=resolved_billet_cost,
-        surface_penalty_slope=args.surface_penalty_slope,
-        surface_penalty_max_multiplier=args.surface_penalty_max_multiplier,
-        complexity_penalty_per_face=args.complexity_penalty_per_face,
-        complexity_penalty_max_multiplier=args.complexity_penalty_max_multiplier,
-        complexity_baseline_faces=args.complexity_baseline_faces,
-        hole_count_penalty_per_feature=args.hole_count_penalty_per_feature,
-        hole_count_penalty_max_multiplier=args.hole_count_penalty_max_multiplier,
-        radius_count_penalty_per_feature=args.radius_count_penalty_per_feature,
-        radius_count_penalty_max_multiplier=args.radius_count_penalty_max_multiplier,
-        qty_learning_rate=args.qty_learning_rate,
-        qty_factor_floor=args.qty_factor_floor,
-    )
-    print_boot(args.step_file)
-    shape = read_step(args.step_file)
+def analyze_step_file(step_file: str, cfg: Config, qty: int) -> AnalysisResult:
+    shape = read_step(step_file)
     results = run_all_rules(shape, cfg)
     rule_multiplier = combined_rule_multiplier(results)
     hole_count = 0
@@ -381,10 +382,31 @@ def main() -> int:
         rule_multiplier,
         hole_count,
         radius_count,
-        args.qty,
+        qty,
     )
-    print_part_process_data(process_data)
-    print_report(results, args.step_file)
+    passed_rule_count = sum(1 for result in results if result.passed)
+    failed_rule_count = len(results) - passed_rule_count
+    return AnalysisResult(
+        file_path=step_file,
+        process_data=process_data,
+        rules=results,
+        summary=AnalysisSummary(
+            passed=failed_rule_count == 0,
+            total_rule_count=len(results),
+            passed_rule_count=passed_rule_count,
+            failed_rule_count=failed_rule_count,
+            rule_multiplier=rule_multiplier,
+        ),
+    )
+
+
+def main() -> int:
+    args = build_arg_parser().parse_args()
+    cfg = build_config_from_args(args)
+    print_boot(args.step_file)
+    analysis = analyze_step_file(args.step_file, cfg, args.qty)
+    print_part_process_data(analysis.process_data)
+    print_report(analysis.rules, args.step_file)
     return 0
 
 

@@ -84,6 +84,8 @@ CLI_FLAGS = {
     "qty_factor_floor": "--qty-factor-floor",
 }
 
+FIELD_KINDS = {key: kind for key, _rule, _label, kind in FIELDS}
+
 LOGO_LINES = [
     " ######  ##    ##  ######          ######   ######## ##     ## ",
     "##    ## ###   ## ##    ##        ##    ##  ##       ###   ### ",
@@ -200,6 +202,37 @@ def save_config(cfg: Dict[str, Any]) -> None:
     path = config_path()
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text(json.dumps(cfg, indent=2) + "\n")
+
+
+def normalize_config_payload(payload: Dict[str, Any], base: Dict[str, Any] | None = None) -> Dict[str, Any]:
+    unknown_keys = sorted(set(payload) - set(DEFAULTS))
+    if unknown_keys:
+        raise KeyError(f"Unknown config field(s): {', '.join(unknown_keys)}")
+
+    normalized = (base or DEFAULTS).copy()
+    for key, raw_value in payload.items():
+        if raw_value is None:
+            if key != "material_billet_cost_eur_per_kg":
+                raise ValueError(f"{key} cannot be null")
+            normalized[key] = None
+            continue
+        normalized[key] = validate_value(key, FIELD_KINDS[key], str(raw_value))
+
+    if "material" in payload and "material_billet_cost_eur_per_kg" not in payload:
+        selected = get_material(str(normalized["material"]))
+        normalized["material_billet_cost_eur_per_kg"] = selected.baseline_billet_cost_eur_per_kg
+
+    if normalized.get("material_billet_cost_eur_per_kg") is None:
+        selected = get_material(str(normalized["material"]))
+        normalized["material_billet_cost_eur_per_kg"] = selected.baseline_billet_cost_eur_per_kg
+
+    return normalized
+
+
+def save_config_payload(payload: Dict[str, Any], base: Dict[str, Any] | None = None) -> Dict[str, Any]:
+    normalized = normalize_config_payload(payload, base=base)
+    save_config(normalized)
+    return normalized
 
 
 def prompt_value(rule: str, label: str, key: str, kind: str, current):
