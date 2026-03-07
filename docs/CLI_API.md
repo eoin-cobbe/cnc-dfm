@@ -20,7 +20,7 @@ make docs-cli
 usage: dfm_check.py [-h] [--qty QTY] [--min-radius MIN_RADIUS]
                     [--max-pocket-ratio MAX_POCKET_RATIO]
                     [--min-wall MIN_WALL] [--max-hole-ratio MAX_HOLE_RATIO]
-                    [--max-setups MAX_SETUPS] [--tool-diameter TOOL_DIAMETER]
+                    [--max-setups MAX_SETUPS]
                     [--max-tool-depth-ratio MAX_TOOL_DEPTH_RATIO]
                     [--material {304_stainless_steel,6061_aluminium,1080_steel,grade_5_titanium}]
                     [--baseline-6061-mrr BASELINE_6061_MRR]
@@ -46,7 +46,8 @@ options:
   -h, --help            show this help message and exit
   --qty QTY             Batch quantity for learning-curve scaling
   --min-radius MIN_RADIUS
-                        Rule 1 min internal radius (mm)
+                        Rule 1 recommended min internal radius (mm); pass floor
+                        is fixed at 0.8 mm
   --max-pocket-ratio MAX_POCKET_RATIO
                         Rule 2 max pocket depth ratio
   --min-wall MIN_WALL   Rule 3 min wall thickness (mm)
@@ -54,8 +55,6 @@ options:
                         Rule 4 max hole depth/diameter ratio
   --max-setups MAX_SETUPS
                         Rule 5 max setup faces/axes
-  --tool-diameter TOOL_DIAMETER
-                        Rule 6 tool diameter (mm)
   --max-tool-depth-ratio MAX_TOOL_DEPTH_RATIO
                         Rule 6 max pocket depth/tool diameter ratio
   --material {304_stainless_steel,6061_aluminium,1080_steel,grade_5_titanium}

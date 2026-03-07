@@ -25,21 +25,23 @@ class RuleResult:
 
 @dataclass
 class Config:
-    min_internal_corner_radius_mm: float = 6.0
+    min_internal_corner_radius_mm: float = 2.0
     max_pocket_depth_ratio: float = 4.0
-    min_wall_thickness_mm: float = 1.0
-    max_hole_depth_to_diameter: float = 6.0
+    min_wall_thickness_mm: float = 0.762
+    max_hole_depth_to_diameter: float = 4.0
     max_setups: int = 2
-    tool_diameter_mm: float = 6.0
-    max_tool_depth_to_diameter_ratio: float = 3.0
+    max_tool_depth_to_diameter_ratio: float = 2.0
     normal_similarity_deg: float = 12.0
     material_key: str = "304_stainless_steel"
-    baseline_6061_mrr_mm3_per_min: float = 60000.0
+    baseline_6061_mrr_mm3_per_min: float = 20000.0
     machine_hourly_rate_3_axis_eur: float = 50.0
     machine_hourly_rate_5_axis_eur: float = 100.0
     material_billet_cost_eur_per_kg: float = 11.49
     surface_penalty_slope: float = 0.15
     surface_penalty_max_multiplier: float = 1.5
+    complexity_penalty_per_face: float = 0.002
+    complexity_penalty_max_multiplier: float = 1.5
+    complexity_baseline_faces: int = 6
     hole_count_penalty_per_feature: float = 0.01
     hole_count_penalty_max_multiplier: float = 1.5
     radius_count_penalty_per_feature: float = 0.005
@@ -64,8 +66,10 @@ class PartProcessData:
     part_surface_area_mm2: float
     part_sav_ratio: float
     bbox_sav_ratio: float
-    surface_complexity_ratio: float
-    finish_multiplier: float
+    surface_area_ratio: float
+    surface_area_multiplier: float
+    surface_complexity_faces: int
+    complexity_multiplier: float
     density_kg_per_m3: float
     mass_kg: float
     stock_mass_kg: float
@@ -80,7 +84,7 @@ class PartProcessData:
     hole_count_multiplier: float
     radius_count: int
     radius_count_multiplier: float
-    machinability_percent: float
+    machinability_index: float
     machinability_source: str
     baseline_6061_mrr_mm3_per_min: float
     material_time_multiplier: float

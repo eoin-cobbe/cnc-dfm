@@ -5,6 +5,8 @@ import argparse
 import math
 from typing import List, Set
 
+from OCC.Core.TopAbs import TopAbs_FACE
+from OCC.Core.TopExp import TopExp_Explorer
 from OCC.Core.TopoDS import TopoDS_Shape
 
 from dfm_geometry import read_step, shape_bbox, shape_surface_area_mm2, shape_volume_mm3
@@ -49,16 +51,20 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="CLI DFM checker for STEP files (pythonOCC).")
     parser.add_argument("step_file", help="Path to input STEP file")
     parser.add_argument("--qty", type=int, default=1, help="Batch quantity for learning-curve scaling")
-    parser.add_argument("--min-radius", type=float, default=1.0, help="Rule 1 min internal radius (mm)")
+    parser.add_argument(
+        "--min-radius",
+        type=float,
+        default=2.0,
+        help="Rule 1 recommended min internal radius (mm); pass floor is fixed at 0.8 mm",
+    )
     parser.add_argument("--max-pocket-ratio", type=float, default=4.0, help="Rule 2 max pocket depth ratio")
-    parser.add_argument("--min-wall", type=float, default=1.0, help="Rule 3 min wall thickness (mm)")
-    parser.add_argument("--max-hole-ratio", type=float, default=6.0, help="Rule 4 max hole depth/diameter ratio")
+    parser.add_argument("--min-wall", type=float, default=0.762, help="Rule 3 min wall thickness (mm)")
+    parser.add_argument("--max-hole-ratio", type=float, default=4.0, help="Rule 4 max hole depth/diameter ratio")
     parser.add_argument("--max-setups", type=int, default=2, help="Rule 5 max setup faces/axes")
-    parser.add_argument("--tool-diameter", type=float, default=6.0, help="Rule 6 tool diameter (mm)")
     parser.add_argument(
         "--max-tool-depth-ratio",
         type=float,
-        default=3.0,
+        default=2.0,
         help="Rule 6 max pocket depth/tool diameter ratio",
     )
     parser.add_argument(
@@ -70,7 +76,7 @@ def build_arg_parser() -> argparse.ArgumentParser:
     parser.add_argument(
         "--baseline-6061-mrr",
         type=float,
-        default=60000.0,
+        default=20000.0,
         help="Baseline 6061 roughing MRR (mm^3/min) used to estimate other materials",
     )
     parser.add_argument(
@@ -95,13 +101,31 @@ def build_arg_parser() -> argparse.ArgumentParser:
         "--surface-penalty-slope",
         type=float,
         default=0.15,
-        help="Surface complexity slope for finish multiplier (time penalty)",
+        help="Surface-area slope for surface-area multiplier (time penalty)",
     )
     parser.add_argument(
         "--surface-penalty-max-multiplier",
         type=float,
         default=1.5,
-        help="Maximum finish multiplier from surface complexity",
+        help="Maximum surface-area multiplier",
+    )
+    parser.add_argument(
+        "--complexity-penalty-per-face",
+        type=float,
+        default=0.002,
+        help="Complexity penalty slope per face above baseline",
+    )
+    parser.add_argument(
+        "--complexity-penalty-max-multiplier",
+        type=float,
+        default=1.5,
+        help="Maximum complexity multiplier",
+    )
+    parser.add_argument(
+        "--complexity-baseline-faces",
+        type=int,
+        default=6,
+        help="Face-count baseline before complexity penalty starts",
     )
     parser.add_argument(
         "--hole-count-penalty-per-feature",
@@ -176,11 +200,22 @@ def compute_part_process_data(
     )
     part_sav_ratio = part_surface_area_mm2 / volume_mm3 if volume_mm3 > 0.0 else 0.0
     bbox_sav_ratio = bbox_surface_area_mm2 / bbox_volume_mm3 if bbox_volume_mm3 > 0.0 else 0.0
-    surface_complexity_ratio = (
+    surface_area_ratio = (
         part_sav_ratio / bbox_sav_ratio if bbox_sav_ratio > 0.0 else 1.0
     )
-    finish_multiplier = 1.0 + cfg.surface_penalty_slope * (surface_complexity_ratio - 1.0)
-    finish_multiplier = max(1.0, min(finish_multiplier, cfg.surface_penalty_max_multiplier))
+    surface_area_multiplier = 1.0 + cfg.surface_penalty_slope * (surface_area_ratio - 1.0)
+    surface_area_multiplier = max(1.0, min(surface_area_multiplier, cfg.surface_penalty_max_multiplier))
+
+    face_count = 0
+    face_exp = TopExp_Explorer(shape, TopAbs_FACE)
+    while face_exp.More():
+        face_count += 1
+        face_exp.Next()
+    complexity_over = max(0, face_count - cfg.complexity_baseline_faces)
+    complexity_multiplier = min(
+        cfg.complexity_penalty_max_multiplier,
+        1.0 + (cfg.complexity_penalty_per_face * complexity_over),
+    )
     material = get_material(material_key)
     ref_6061 = get_material("6061_aluminium")
     billet_cost_eur_per_kg = (
@@ -209,7 +244,7 @@ def compute_part_process_data(
     machine_hourly_rate_eur = (
         cfg.machine_hourly_rate_3_axis_eur if machine_type == "3-axis" else cfg.machine_hourly_rate_5_axis_eur
     )
-    material_time_multiplier = ref_6061.machinability_percent / material.machinability_percent
+    material_time_multiplier = ref_6061.machinability_index / material.machinability_index
     estimated_roughing_mrr_mm3_per_min = baseline_6061_mrr_mm3_per_min / material_time_multiplier
     base_roughing_time_min = removed_volume_mm3 / baseline_6061_mrr_mm3_per_min
     roughing_time_min = base_roughing_time_min * material_time_multiplier
@@ -219,7 +254,8 @@ def compute_part_process_data(
     learning_exponent = math.log(learning_rate, 2)
     qty_multiplier = max(qty_factor_floor, qty_safe ** learning_exponent)
     total_time_multiplier = (
-        finish_multiplier
+        surface_area_multiplier
+        * complexity_multiplier
         * material_time_multiplier
         * rule_multiplier
         * hole_count_multiplier
@@ -227,14 +263,16 @@ def compute_part_process_data(
     )
     base_machining_time_min = (
         roughing_time_min
-        * finish_multiplier
+        * surface_area_multiplier
+        * complexity_multiplier
         * rule_multiplier
         * hole_count_multiplier
         * radius_count_multiplier
     )
-    machining_time_min = base_machining_time_min * qty_multiplier
+    machining_time_min = base_machining_time_min
+    qty_adjusted_machining_time_min = base_machining_time_min * qty_multiplier
     roughing_cost = (roughing_time_min / 60.0) * machine_hourly_rate_eur
-    machining_cost = (machining_time_min / 60.0) * machine_hourly_rate_eur
+    machining_cost = (qty_adjusted_machining_time_min / 60.0) * machine_hourly_rate_eur
     base_machining_cost = (base_machining_time_min / 60.0) * machine_hourly_rate_eur
     total_estimated_cost_eur = (material_stock_cost_eur + base_machining_cost) * qty_multiplier
     batch_total_estimated_cost_eur = total_estimated_cost_eur * qty_safe
@@ -253,8 +291,10 @@ def compute_part_process_data(
         part_surface_area_mm2=part_surface_area_mm2,
         part_sav_ratio=part_sav_ratio,
         bbox_sav_ratio=bbox_sav_ratio,
-        surface_complexity_ratio=surface_complexity_ratio,
-        finish_multiplier=finish_multiplier,
+        surface_area_ratio=surface_area_ratio,
+        surface_area_multiplier=surface_area_multiplier,
+        surface_complexity_faces=face_count,
+        complexity_multiplier=complexity_multiplier,
         density_kg_per_m3=material.density_kg_per_m3,
         mass_kg=mass_kg,
         stock_mass_kg=stock_mass_kg,
@@ -269,7 +309,7 @@ def compute_part_process_data(
         hole_count_multiplier=hole_count_multiplier,
         radius_count=radius_count,
         radius_count_multiplier=radius_count_multiplier,
-        machinability_percent=material.machinability_percent,
+        machinability_index=material.machinability_index,
         machinability_source=material.machinability_source,
         baseline_6061_mrr_mm3_per_min=baseline_6061_mrr_mm3_per_min,
         material_time_multiplier=material_time_multiplier,
@@ -300,7 +340,6 @@ def main() -> int:
     cfg = Config(
         min_internal_corner_radius_mm=args.min_radius,
         max_pocket_depth_ratio=args.max_pocket_ratio,
-        tool_diameter_mm=args.tool_diameter,
         max_tool_depth_to_diameter_ratio=args.max_tool_depth_ratio,
         min_wall_thickness_mm=args.min_wall,
         max_hole_depth_to_diameter=args.max_hole_ratio,
@@ -312,6 +351,9 @@ def main() -> int:
         material_billet_cost_eur_per_kg=resolved_billet_cost,
         surface_penalty_slope=args.surface_penalty_slope,
         surface_penalty_max_multiplier=args.surface_penalty_max_multiplier,
+        complexity_penalty_per_face=args.complexity_penalty_per_face,
+        complexity_penalty_max_multiplier=args.complexity_penalty_max_multiplier,
+        complexity_baseline_faces=args.complexity_baseline_faces,
         hole_count_penalty_per_feature=args.hole_count_penalty_per_feature,
         hole_count_penalty_max_multiplier=args.hole_count_penalty_max_multiplier,
         radius_count_penalty_per_feature=args.radius_count_penalty_per_feature,
