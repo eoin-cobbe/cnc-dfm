@@ -2,12 +2,14 @@
 from __future__ import annotations
 
 import argparse
+import getpass
 import json
 import os
 from pathlib import Path
 from typing import Any, Dict, List, Tuple
 
 from dfm_materials import DEFAULT_MATERIAL_KEY, MATERIAL_OPTIONS, get_material
+from onshape.auth import auth_config_path, auth_config_summary, load_auth_config, save_auth_config
 
 DEFAULTS = {
     "min_radius": 0.8,
@@ -228,6 +230,76 @@ def prompt_value(rule: str, label: str, key: str, kind: str, current):
             print(f"Invalid value: {exc}")
 
 
+def prompt_yes_no(prompt: str, default: bool) -> bool:
+    suffix = "Y/n" if default else "y/N"
+    while True:
+        raw = input(f"{prompt} [{suffix}]: ").strip().lower()
+        if raw == "":
+            return default
+        if raw in {"y", "yes"}:
+            return True
+        if raw in {"n", "no"}:
+            return False
+        print("Please answer y or n.")
+
+
+def prompt_onshape_auth() -> None:
+    summary = auth_config_summary()
+    print("")
+    print("+----------------------------------------------------------------+")
+    print("| ONSHAPE AUTH                                                   |")
+    print("+----------------------------------------------------------------+")
+    print("Onshape credentials are stored outside the repo so they cannot be committed here.")
+    print(f"Auth config path: {auth_config_path()}")
+    print(f"Current source: {summary['source']}")
+    print(f"Configured: {summary['configured']}")
+    if summary["configured"] == "yes":
+        print(f"Access key: {summary['access_key_masked']}")
+        print(f"Base URL: {summary['base_url']}")
+        print(f"Auth mode: {summary['auth_mode']}")
+    if not prompt_yes_no("Configure or update Onshape credentials now?", default=False):
+        return
+
+    existing = load_auth_config()
+    access_default = existing.get("access_key", "")
+    base_url_default = existing.get("base_url", "https://cad.onshape.com")
+    auth_mode_default = existing.get("auth_mode", "hmac")
+
+    access_key = input(
+        f"Onshape access key [{access_default if not access_default else access_default[:4] + '...' + access_default[-4:]}]: "
+    ).strip()
+    if access_key == "":
+        access_key = existing.get("access_key", "")
+    while access_key == "":
+        print("Access key is required.")
+        access_key = input("Onshape access key: ").strip()
+
+    secret_key = getpass.getpass("Onshape secret key [hidden, Enter keeps current]: ").strip()
+    if secret_key == "":
+        secret_key = existing.get("secret_key", "")
+    while secret_key == "":
+        print("Secret key is required.")
+        secret_key = getpass.getpass("Onshape secret key [hidden]: ").strip()
+
+    while True:
+        base_url = input(f"Onshape base URL [{base_url_default}]: ").strip() or base_url_default
+        if base_url.startswith("http://") or base_url.startswith("https://"):
+            break
+        print("Base URL must start with http:// or https://")
+
+    while True:
+        auth_mode = input(f"Auth mode [hmac/basic] [{auth_mode_default}]: ").strip().lower() or auth_mode_default
+        if auth_mode in {"hmac", "basic"}:
+            break
+        print("Auth mode must be 'hmac' or 'basic'.")
+
+    path = save_auth_config(access_key=access_key, secret_key=secret_key, base_url=base_url, auth_mode=auth_mode)
+    print("")
+    print("Onshape auth saved.")
+    print(f"Path: {path}")
+    print("Secrets are not stored in the git repository.")
+
+
 def run_wizard() -> int:
     cfg = load_config()
 
@@ -274,6 +346,7 @@ def run_wizard() -> int:
             continue
         print(f"{rule}: {label} = {updated[key]}")
     print(f"Path: {config_path()}")
+    prompt_onshape_auth()
     print("Use 'run config' anytime to overwrite these values.")
     return 0
 
@@ -292,9 +365,25 @@ def show_config() -> int:
     cfg = load_saved_only()
     if cfg is None:
         print(f"No saved config at {config_path()}")
-        return 0
+        cfg = DEFAULTS.copy()
     print(json.dumps(cfg, indent=2))
     print(f"Path: {config_path()}")
+    auth_summary = auth_config_summary()
+    print("")
+    print("Onshape auth:")
+    print(
+        json.dumps(
+            {
+                "configured": auth_summary["configured"],
+                "source": auth_summary["source"],
+                "path": auth_summary["path"],
+                "access_key_masked": auth_summary["access_key_masked"],
+                "base_url": auth_summary["base_url"],
+                "auth_mode": auth_summary["auth_mode"],
+            },
+            indent=2,
+        )
+    )
     return 0
 
 

@@ -5,7 +5,7 @@ from typing import Dict, Tuple
 from OCC.Core.Precision import precision
 from OCC.Core.TopoDS import TopoDS_Shape
 
-from dfm_models import Config, RuleResult
+from dfm_models import Config, OffenderRecord, RuleResult
 from dfm_scoring import rule_multiplier_from_threshold
 from .rule1_internal_corner_radius import detect_internal_corner_features
 from .rule2_deep_pocket_ratio import _group_corner_features_by_depth, _split_depth_layer_into_pockets
@@ -31,6 +31,7 @@ def evaluate_tool_depth_to_diameter(shape: TopoDS_Shape, cfg: Config) -> RuleRes
     offenders = 0
     worst_ratio = 0.0
     ratios = []
+    offender_records = []
 
     for axis_name, axis_features in features_by_axis.items():
         layers = _group_corner_features_by_depth(axis_features, tol_mm=0.5)
@@ -54,6 +55,33 @@ def evaluate_tool_depth_to_diameter(shape: TopoDS_Shape, cfg: Config) -> RuleRes
                 worst_ratio = max(worst_ratio, ratio)
                 if ratio > cfg.max_tool_depth_to_diameter_ratio:
                     axis_offenders += 1
+                    avg_x = sum(feature["midpoint"].X() for feature in pocket_features) / len(pocket_features)
+                    avg_y = sum(feature["midpoint"].Y() for feature in pocket_features) / len(pocket_features)
+                    avg_z = sum(feature["midpoint"].Z() for feature in pocket_features) / len(pocket_features)
+                    offender_records.append(
+                        OffenderRecord(
+                            rule_id="R6",
+                            metric="Depth/Tool Ratio",
+                            current_value=ratio,
+                            target_value=cfg.max_tool_depth_to_diameter_ratio,
+                            delta=ratio - cfg.max_tool_depth_to_diameter_ratio,
+                            occ_anchor={
+                                "centroid": {"x": avg_x, "y": avg_y, "z": avg_z},
+                                "dominant_axis": axis_name,
+                                "local_dimensions": {
+                                    "depth_mm": depth,
+                                    "tool_diameter_mm": inferred_tool_diameter,
+                                },
+                            },
+                            supported_remediations=["fillet.radius", "extrude.depth"],
+                            auto_remediable=True,
+                            meta={
+                                "depth_mm": depth,
+                                "tool_diameter_mm": inferred_tool_diameter,
+                                "edge_radius_mm": inferred_min_edge_radius,
+                            },
+                        )
+                    )
 
         axis_pass = max(axis_detected - axis_offenders, 0)
         axis_breakdown[axis_name] = (axis_detected, axis_pass, axis_offenders)
@@ -94,4 +122,5 @@ def evaluate_tool_depth_to_diameter(shape: TopoDS_Shape, cfg: Config) -> RuleRes
         threshold=cfg.max_tool_depth_to_diameter_ratio,
         threshold_kind="max",
         rule_multiplier=rule_mult,
+        offenders=offender_records,
     )

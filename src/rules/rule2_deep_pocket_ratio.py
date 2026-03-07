@@ -17,7 +17,7 @@ from dfm_geometry import (
     shape_bbox,
     signed_distance_between_planes,
 )
-from dfm_models import Config, RuleResult
+from dfm_models import Config, OffenderRecord, RuleResult
 from dfm_scoring import rule_multiplier_from_threshold
 from .rule1_internal_corner_radius import detect_internal_corner_features
 
@@ -303,6 +303,7 @@ def evaluate_deep_pocket_ratio(shape: TopoDS_Shape, cfg: Config) -> RuleResult:
     offenders = 0
     worst_ratio = 0.0
     ratios: List[float] = []
+    offender_records: List[OffenderRecord] = []
 
     for axis_name, axis_features in features_by_axis.items():
         layers = _group_corner_features_by_depth(axis_features, tol_mm=0.5)
@@ -327,6 +328,35 @@ def evaluate_deep_pocket_ratio(shape: TopoDS_Shape, cfg: Config) -> RuleResult:
                 worst_ratio = max(worst_ratio, ratio)
                 if ratio > cfg.max_pocket_depth_ratio:
                     axis_offenders += 1
+                    avg_x = sum(feature["midpoint"].X() for feature in pocket_features) / len(pocket_features)
+                    avg_y = sum(feature["midpoint"].Y() for feature in pocket_features) / len(pocket_features)
+                    avg_z = sum(feature["midpoint"].Z() for feature in pocket_features) / len(pocket_features)
+                    target_depth = cfg.max_pocket_depth_ratio * opening
+                    offender_records.append(
+                        OffenderRecord(
+                            rule_id="R2",
+                            metric="Depth/Open Ratio",
+                            current_value=ratio,
+                            target_value=cfg.max_pocket_depth_ratio,
+                            delta=ratio - cfg.max_pocket_depth_ratio,
+                            occ_anchor={
+                                "centroid": {"x": avg_x, "y": avg_y, "z": avg_z},
+                                "dominant_axis": axis_name,
+                                "local_dimensions": {
+                                    "depth_mm": depth,
+                                    "opening_mm": opening,
+                                    "target_depth_mm": target_depth,
+                                },
+                            },
+                            supported_remediations=["extrude.depth"],
+                            auto_remediable=True,
+                            meta={
+                                "depth_mm": depth,
+                                "opening_mm": opening,
+                                "target_depth_mm": target_depth,
+                            },
+                        )
+                    )
 
         axis_pass = max(axis_detected - axis_offenders, 0)
         axis_breakdown[axis_name] = (axis_detected, axis_pass, axis_offenders)
@@ -365,4 +395,5 @@ def evaluate_deep_pocket_ratio(shape: TopoDS_Shape, cfg: Config) -> RuleResult:
         threshold=cfg.max_pocket_depth_ratio,
         threshold_kind="max",
         rule_multiplier=rule_mult,
+        offenders=offender_records,
     )

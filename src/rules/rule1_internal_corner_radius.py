@@ -18,7 +18,7 @@ from dfm_geometry import (
     is_parallel,
     offset_is_outside,
 )
-from dfm_models import Config, RuleResult
+from dfm_models import Config, OffenderRecord, RuleResult
 from dfm_scoring import rule_multiplier_from_threshold
 
 R1_ABSOLUTE_PASS_RADIUS_MM = 0.8
@@ -230,7 +230,7 @@ def detect_internal_corner_features(shape: TopoDS_Shape) -> Dict[str, List[dict]
 
 
 def evaluate_internal_corner_radius(shape: TopoDS_Shape, cfg: Config) -> RuleResult:
-    radii_by_axis = detect_internal_corner_radii(shape)
+    features_by_axis = detect_internal_corner_features(shape)
     feature_radii: List[float] = []
     recommended_min_radius_mm = cfg.min_internal_corner_radius_mm
     axis_breakdown: Dict[str, Tuple[int, int, int]] = {
@@ -238,14 +238,42 @@ def evaluate_internal_corner_radius(shape: TopoDS_Shape, cfg: Config) -> RuleRes
         "Y": (0, 0, 0),
         "Z": (0, 0, 0),
     }
+    offenders: List[OffenderRecord] = []
 
-    for axis_name, axis_radii in radii_by_axis.items():
+    for axis_name, axis_features in features_by_axis.items():
+        axis_radii = [float(feature["radius"]) for feature in axis_features]
         axis_detected = len(axis_radii)
         axis_pass = sum(1 for r in axis_radii if r >= R1_ABSOLUTE_PASS_RADIUS_MM)
         axis_fail = axis_detected - axis_pass
 
         feature_radii.extend(axis_radii)
         axis_breakdown[axis_name] = (axis_detected, axis_pass, axis_fail)
+        for feature in axis_features:
+            radius = float(feature["radius"])
+            if radius >= R1_ABSOLUTE_PASS_RADIUS_MM:
+                continue
+            c_mid = feature["midpoint"]
+            target_radius = max(R1_ABSOLUTE_PASS_RADIUS_MM, recommended_min_radius_mm)
+            offenders.append(
+                OffenderRecord(
+                    rule_id="R1",
+                    metric="Radius (mm)",
+                    current_value=radius,
+                    target_value=target_radius,
+                    delta=max(0.0, target_radius - radius),
+                    occ_anchor={
+                        "centroid": {"x": c_mid.X(), "y": c_mid.Y(), "z": c_mid.Z()},
+                        "dominant_axis": axis_name,
+                        "local_dimensions": {
+                            "radius_mm": radius,
+                            "depth_mm": float(feature["cylindrical_depth"]),
+                        },
+                    },
+                    supported_remediations=["fillet.radius"],
+                    auto_remediable=True,
+                    meta={"recommended_min_radius_mm": recommended_min_radius_mm},
+                )
+            )
 
     if not feature_radii:
         return RuleResult(
@@ -263,6 +291,7 @@ def evaluate_internal_corner_radius(shape: TopoDS_Shape, cfg: Config) -> RuleRes
             threshold=R1_ABSOLUTE_PASS_RADIUS_MM,
             threshold_kind="min",
             rule_multiplier=1.0,
+            offenders=[],
         )
 
     min_radius = min(feature_radii)
@@ -304,4 +333,5 @@ def evaluate_internal_corner_radius(shape: TopoDS_Shape, cfg: Config) -> RuleRes
         threshold=R1_ABSOLUTE_PASS_RADIUS_MM,
         threshold_kind="min",
         rule_multiplier=rule_mult,
+        offenders=offenders,
     )

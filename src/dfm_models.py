@@ -1,7 +1,20 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
-from typing import Dict, Optional, Tuple
+from dataclasses import dataclass, field
+from typing import Any, Dict, List, Optional, Tuple
+
+
+@dataclass
+class OffenderRecord:
+    rule_id: str
+    metric: str
+    current_value: float
+    target_value: float
+    delta: float
+    occ_anchor: Dict[str, Any]
+    supported_remediations: List[str] = field(default_factory=list)
+    auto_remediable: bool = True
+    meta: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass
@@ -21,6 +34,7 @@ class RuleResult:
     threshold: Optional[float] = None
     threshold_kind: Optional[str] = None  # "max" or "min"
     rule_multiplier: float = 1.0
+    offenders: List[OffenderRecord] = field(default_factory=list)
 
 
 @dataclass
@@ -101,3 +115,59 @@ class PartProcessData:
     machining_cost: float
     total_estimated_cost_eur: float
     batch_total_estimated_cost_eur: float
+
+
+@dataclass
+class OnshapeTarget:
+    did: str
+    wid: str
+    eid: str
+    configuration: Optional[str] = None
+    workspace_type: str = "w"
+
+
+@dataclass
+class FeatureCandidate:
+    feature_id: str
+    feature_type: str
+    parameter_path: str
+    current_expression: str
+    editable: bool
+    confidence: float
+    evidence: List[str] = field(default_factory=list)
+    parameter_id: Optional[str] = None
+    parameter_name: Optional[str] = None
+    target_axis: Optional[str] = None
+    matched_rule_id: Optional[str] = None
+    meta: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class RemediationProposal:
+    proposal_id: str
+    rule_id: str
+    feature_id: str
+    feature_type: str
+    parameter_path: str
+    before: str
+    after: str
+    rationale: str
+    expected_effect: str
+    confidence: float
+    requires_confirmation: bool = True
+    matched_offender_index: Optional[int] = None
+    parameter_id: Optional[str] = None
+    action: Optional[str] = None
+    meta: Dict[str, Any] = field(default_factory=dict)
+
+
+@dataclass
+class AnalysisSession:
+    session_id: str
+    target: OnshapeTarget
+    source_microversion: str
+    export_path: Optional[str]
+    offender_records: List[OffenderRecord] = field(default_factory=list)
+    feature_candidates: List[FeatureCandidate] = field(default_factory=list)
+    proposals: List[RemediationProposal] = field(default_factory=list)
+    audit_log: List[str] = field(default_factory=list)

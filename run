@@ -18,6 +18,10 @@ if [[ $# -ge 1 ]]; then
       shift
       exec "${ROOT_DIR}/scripts/config.sh" "$@"
       ;;
+    onshape)
+      shift
+      exec "${ROOT_DIR}/scripts/run_onshape.sh" "$@"
+      ;;
     show-config)
       if [[ ! -x "${ENV_DIR}/bin/python" ]]; then
         mamba create -y -p "${ENV_DIR}" python=3.11 pythonocc-core pip fzf fd-find

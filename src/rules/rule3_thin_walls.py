@@ -22,7 +22,7 @@ from dfm_geometry import (
     shape_centroid,
     signed_distance_between_planes,
 )
-from dfm_models import Config, RuleResult
+from dfm_models import Config, OffenderRecord, RuleResult
 from dfm_scoring import rule_multiplier_from_threshold
 
 MIN_AXIS_FACE_AREA_FRACTION = 0.05
@@ -83,7 +83,7 @@ def _wall_probe_point(
 
 def _opposing_planar_wall_thicknesses_by_axis(
     shape: TopoDS_Shape, max_angle_deg: float = 10.0
-) -> Dict[str, List[float]]:
+) -> Dict[str, List[dict]]:
     faces = collect_faces(shape)
     centroid = shape_centroid(shape)
     dx, dy, dz = shape_bbox(shape)
@@ -103,7 +103,7 @@ def _opposing_planar_wall_thicknesses_by_axis(
         point, normal = data
         planar.append((face, point, normal, is_internal_face(face, centroid), face_area(face)))
 
-    thicknesses_by_axis: Dict[str, List[float]] = {"X": [], "Y": [], "Z": []}
+    thicknesses_by_axis: Dict[str, List[dict]] = {"X": [], "Y": [], "Z": []}
     min_axis_dot = math.cos(math.radians(max_angle_deg))
     axis_dirs = [
         ("X", gp_Dir(1.0, 0.0, 0.0)),
@@ -144,21 +144,48 @@ def _opposing_planar_wall_thicknesses_by_axis(
                 classifier = BRepClass3d_SolidClassifier(shape, probe, precision.Confusion())
                 if classifier.State() != TopAbs_IN:
                     continue
-                thicknesses_by_axis[axis_name].append(thickness)
+                thicknesses_by_axis[axis_name].append(
+                    {
+                        "thickness": thickness,
+                        "probe": {"x": probe.X(), "y": probe.Y(), "z": probe.Z()},
+                    }
+                )
 
     return thicknesses_by_axis
 
 
 def evaluate_thin_walls(shape: TopoDS_Shape, cfg: Config) -> RuleResult:
-    thicknesses_by_axis = _opposing_planar_wall_thicknesses_by_axis(shape)
-    thicknesses = [t for axis in ("X", "Y", "Z") for t in thicknesses_by_axis[axis]]
+    thickness_rows_by_axis = _opposing_planar_wall_thicknesses_by_axis(shape)
+    thicknesses = [row["thickness"] for axis in ("X", "Y", "Z") for row in thickness_rows_by_axis[axis]]
     axis_breakdown: Dict[str, Tuple[int, int, int]] = {}
+    offenders: List[OffenderRecord] = []
     for axis in ("X", "Y", "Z"):
-        axis_vals = thicknesses_by_axis[axis]
+        axis_vals = thickness_rows_by_axis[axis]
         axis_detected = len(axis_vals)
-        axis_pass = sum(1 for t in axis_vals if t >= cfg.min_wall_thickness_mm)
+        axis_pass = sum(1 for row in axis_vals if row["thickness"] >= cfg.min_wall_thickness_mm)
         axis_fail = axis_detected - axis_pass
         axis_breakdown[axis] = (axis_detected, axis_pass, axis_fail)
+        for row in axis_vals:
+            thickness = row["thickness"]
+            if thickness >= cfg.min_wall_thickness_mm:
+                continue
+            offenders.append(
+                OffenderRecord(
+                    rule_id="R3",
+                    metric="Wall (mm)",
+                    current_value=thickness,
+                    target_value=cfg.min_wall_thickness_mm,
+                    delta=cfg.min_wall_thickness_mm - thickness,
+                    occ_anchor={
+                        "centroid": row["probe"],
+                        "dominant_axis": axis,
+                        "local_dimensions": {"wall_thickness_mm": thickness},
+                    },
+                    supported_remediations=[],
+                    auto_remediable=False,
+                    meta={"reason": "phase-1 diagnose only"},
+                )
+            )
 
     if not thicknesses:
         return RuleResult(
@@ -175,6 +202,7 @@ def evaluate_thin_walls(shape: TopoDS_Shape, cfg: Config) -> RuleResult:
             threshold=cfg.min_wall_thickness_mm,
             threshold_kind="min",
             rule_multiplier=1.0,
+            offenders=[],
         )
 
     thinnest = min(thicknesses)
@@ -206,4 +234,5 @@ def evaluate_thin_walls(shape: TopoDS_Shape, cfg: Config) -> RuleResult:
         threshold=cfg.min_wall_thickness_mm,
         threshold_kind="min",
         rule_multiplier=rule_mult,
+        offenders=offenders,
     )

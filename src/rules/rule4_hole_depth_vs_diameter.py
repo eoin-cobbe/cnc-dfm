@@ -18,7 +18,7 @@ from dfm_geometry import (
     is_parallel,
     offset_is_outside,
 )
-from dfm_models import Config, RuleResult
+from dfm_models import Config, OffenderRecord, RuleResult
 from dfm_scoring import rule_multiplier_from_threshold
 
 
@@ -117,6 +117,7 @@ def evaluate_hole_depth_vs_diameter(shape: TopoDS_Shape, cfg: Config) -> RuleRes
     ratios: List[float] = []
     seen: Set[Tuple[float, float, float, float, float]] = set()
     axis_ratios = {"X": [], "Y": [], "Z": []}
+    offenders: List[OffenderRecord] = []
 
     for face in faces:
         cyl = cylinder_face_depth_and_diameter(face)
@@ -149,6 +150,36 @@ def evaluate_hole_depth_vs_diameter(shape: TopoDS_Shape, cfg: Config) -> RuleRes
         }
         dominant_axis = max(axis_values, key=axis_values.get)
         axis_ratios[dominant_axis].append(ratio)
+        if ratio > cfg.max_hole_depth_to_diameter:
+            target_depth = cfg.max_hole_depth_to_diameter * diameter
+            target_diameter = depth / cfg.max_hole_depth_to_diameter
+            offenders.append(
+                OffenderRecord(
+                    rule_id="R4",
+                    metric="Hole D/D Ratio",
+                    current_value=ratio,
+                    target_value=cfg.max_hole_depth_to_diameter,
+                    delta=ratio - cfg.max_hole_depth_to_diameter,
+                    occ_anchor={
+                        "centroid": {"x": c_mid.X(), "y": c_mid.Y(), "z": c_mid.Z()},
+                        "dominant_axis": dominant_axis,
+                        "local_dimensions": {
+                            "depth_mm": depth,
+                            "diameter_mm": diameter,
+                            "target_depth_mm": target_depth,
+                            "target_diameter_mm": target_diameter,
+                        },
+                    },
+                    supported_remediations=["hole.depth", "hole.diameter"],
+                    auto_remediable=True,
+                    meta={
+                        "depth_mm": depth,
+                        "diameter_mm": diameter,
+                        "target_depth_mm": target_depth,
+                        "target_diameter_mm": target_diameter,
+                    },
+                )
+            )
 
     axis_breakdown = {}
     for axis in ("X", "Y", "Z"):
@@ -178,6 +209,7 @@ def evaluate_hole_depth_vs_diameter(shape: TopoDS_Shape, cfg: Config) -> RuleRes
             threshold=cfg.max_hole_depth_to_diameter,
             threshold_kind="max",
             rule_multiplier=rule_mult,
+            offenders=[],
         )
 
     worst = max(ratios)
@@ -207,4 +239,5 @@ def evaluate_hole_depth_vs_diameter(shape: TopoDS_Shape, cfg: Config) -> RuleRes
         threshold=cfg.max_hole_depth_to_diameter,
         threshold_kind="max",
         rule_multiplier=rule_mult,
+        offenders=offenders,
     )
