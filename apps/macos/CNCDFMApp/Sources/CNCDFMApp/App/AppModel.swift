@@ -14,6 +14,7 @@ final class AppModel: ObservableObject {
     @Published var selectedFileURL: URL?
     @Published var quantity: Int = 1
     @Published var analysis: AnalysisResponse?
+    @Published var previewFileURL: URL?
     @Published var isBootstrapping = false
     @Published var isAnalyzing = false
     @Published var isSavingSettings = false
@@ -82,7 +83,7 @@ final class AppModel: ObservableObject {
         panel.allowedContentTypes = [.stepFile, .stepTextFile]
         panel.prompt = "Select STEP File"
         if panel.runModal() == .OK {
-            selectedFileURL = panel.url
+            setSelectedFileURL(panel.url)
         }
     }
 
@@ -90,7 +91,7 @@ final class AppModel: ObservableObject {
         guard url.isFileURL, ["step", "stp"].contains(url.pathExtension.lowercased()) else {
             return
         }
-        selectedFileURL = url
+        setSelectedFileURL(url)
     }
 
     func saveSettings() async {
@@ -126,6 +127,13 @@ final class AppModel: ObservableObject {
         do {
             analysis = try await backendService.analyze(fileURL: selectedFileURL, qty: quantity)
             lastErrorMessage = nil
+            do {
+                let preview = try await backendService.generatePreview(fileURL: selectedFileURL)
+                previewFileURL = URL(fileURLWithPath: preview.previewPath)
+            } catch {
+                previewFileURL = nil
+                present(error)
+            }
         } catch {
             present(error)
         }
@@ -137,6 +145,13 @@ final class AppModel: ObservableObject {
 
     private func present(_ error: Error) {
         lastErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+    }
+
+    private func setSelectedFileURL(_ url: URL?) {
+        selectedFileURL = url
+        analysis = nil
+        previewFileURL = nil
+        lastErrorMessage = nil
     }
 }
 

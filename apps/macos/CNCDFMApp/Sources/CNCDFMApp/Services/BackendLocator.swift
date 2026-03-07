@@ -10,13 +10,13 @@ struct BackendInstallation {
 
 enum BackendLocator {
     static func locate() throws -> BackendInstallation {
-        let repoRoot = try locateRepoRoot()
-        let apiScript = repoRoot.appendingPathComponent("src/dfm_app_api.py")
+        let backendRoot = try locateBackendRoot()
+        let apiScript = backendRoot.appendingPathComponent("src/dfm_app_api.py")
 
         if let explicitPython = ProcessInfo.processInfo.environment["CNC_DFM_PYTHON"], !explicitPython.isEmpty {
             let executableURL = URL(fileURLWithPath: explicitPython)
             return BackendInstallation(
-                repoRoot: repoRoot,
+                repoRoot: backendRoot,
                 apiScript: apiScript,
                 executableURL: executableURL,
                 launchPrefix: [apiScript.path],
@@ -24,10 +24,10 @@ enum BackendLocator {
             )
         }
 
-        let bundledPython = repoRoot.appendingPathComponent(".conda-env/bin/python")
+        let bundledPython = backendRoot.appendingPathComponent(".conda-env/bin/python")
         if FileManager.default.isExecutableFile(atPath: bundledPython.path) {
             return BackendInstallation(
-                repoRoot: repoRoot,
+                repoRoot: backendRoot,
                 apiScript: apiScript,
                 executableURL: bundledPython,
                 launchPrefix: [apiScript.path],
@@ -37,7 +37,7 @@ enum BackendLocator {
 
         let envExecutable = URL(fileURLWithPath: "/usr/bin/env")
         return BackendInstallation(
-            repoRoot: repoRoot,
+            repoRoot: backendRoot,
             apiScript: apiScript,
             executableURL: envExecutable,
             launchPrefix: ["python3", apiScript.path],
@@ -45,7 +45,7 @@ enum BackendLocator {
         )
     }
 
-    private static func locateRepoRoot() throws -> URL {
+    private static func locateBackendRoot() throws -> URL {
         let fileManager = FileManager.default
         if let explicitRoot = ProcessInfo.processInfo.environment["CNC_DFM_REPO_ROOT"], !explicitRoot.isEmpty {
             let candidate = URL(fileURLWithPath: explicitRoot).standardizedFileURL
@@ -53,6 +53,10 @@ enum BackendLocator {
                 return candidate
             }
             throw BackendLocatorError.invalidExplicitRoot(candidate.path)
+        }
+
+        if let bundledRoot = bundledBackendRoot() {
+            return bundledRoot
         }
 
         let compileTimeSourceURL = URL(fileURLWithPath: #filePath)
@@ -66,6 +70,29 @@ enum BackendLocator {
         }
 
         throw BackendLocatorError.repoRootNotFound
+    }
+
+    private static func bundledBackendRoot() -> URL? {
+        guard let resourcesURL = Bundle.main.resourceURL else {
+            return nil
+        }
+
+        let markerURL = resourcesURL.appendingPathComponent("backend-root.txt")
+        if let rawPath = try? String(contentsOf: markerURL, encoding: .utf8)
+            .trimmingCharacters(in: .whitespacesAndNewlines),
+           !rawPath.isEmpty {
+            let candidate = URL(fileURLWithPath: rawPath).standardizedFileURL
+            if FileManager.default.fileExists(atPath: candidate.appendingPathComponent("src/dfm_app_api.py").path) {
+                return candidate
+            }
+        }
+
+        let bundledBackend = resourcesURL.appendingPathComponent("backend")
+        if FileManager.default.fileExists(atPath: bundledBackend.appendingPathComponent("src/dfm_app_api.py").path) {
+            return bundledBackend
+        }
+
+        return nil
     }
 
     private static func ascendToRepoRoot(startingAt startURL: URL) -> URL? {

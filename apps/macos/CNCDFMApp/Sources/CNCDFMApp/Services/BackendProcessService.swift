@@ -37,6 +37,13 @@ struct BackendProcessService {
         return try await run(["config", "save", "--json-input", "-"], stdin: payload, decode: ConfigResponse.self)
     }
 
+    func generatePreview(fileURL: URL) async throws -> PreviewResponse {
+        try await run(
+            ["preview", "--input", fileURL.path],
+            decode: PreviewResponse.self
+        )
+    }
+
     func analyze(fileURL: URL, qty: Int) async throws -> AnalysisResponse {
         try await run(
             ["analyze", "--input", fileURL.path, "--qty", String(qty)],

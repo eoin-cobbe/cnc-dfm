@@ -6,64 +6,22 @@ struct CheckView: View {
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: 18) {
-                PanelCard(title: "Run Check", subtitle: "Use the Python backend already in this repo.") {
-                    VStack(alignment: .leading, spacing: 14) {
-                        dropZone
-
-                        HStack(alignment: .center, spacing: 14) {
-                            Stepper(value: $model.quantity, in: 1...10_000) {
-                                VStack(alignment: .leading, spacing: 2) {
-                                    Text("Quantity")
-                                        .font(.subheadline)
-                                    Text("\(model.quantity)")
-                                        .font(.title3.weight(.semibold))
-                                }
-                            }
-                            .frame(maxWidth: 220, alignment: .leading)
-
-                            Spacer()
-
-                            Button("Choose File") {
-                                model.pickStepFile()
-                            }
-                            .buttonStyle(.bordered)
-
-                            Button {
-                                Task {
-                                    await model.analyzeSelectedFile()
-                                }
-                            } label: {
-                                if model.isAnalyzing {
-                                    ProgressView()
-                                        .controlSize(.small)
-                                } else {
-                                    Text("Run Analysis")
-                                }
-                            }
-                            .buttonStyle(.borderedProminent)
-                            .disabled(model.selectedFileURL == nil || !model.hasAnalysisRuntime || model.isAnalyzing)
-                        }
-
-                        if let selectedFileURL = model.selectedFileURL {
-                            Text(selectedFileURL.path)
-                                .font(.footnote.monospaced())
-                                .foregroundStyle(AppTheme.mutedText)
-                                .textSelection(.enabled)
-                        }
-
-                        if !model.hasAnalysisRuntime {
-                            Text("Analysis runtime is not currently available. Check Diagnostics to confirm the selected Python environment can import OCC.")
-                                .font(.subheadline)
-                                .foregroundStyle(AppTheme.warning)
+                if let analysis = model.analysis {
+                    if let previewFileURL = model.previewFileURL {
+                        HStack {
+                            Spacer(minLength: 0)
+                            PartPreview3DView(fileURL: previewFileURL)
+                                .frame(maxWidth: 560)
+                            Spacer(minLength: 0)
                         }
                     }
-                }
 
-                if let analysis = model.analysis {
                     summarySection(analysis)
                     processSection(analysis.processData)
                     rulesSection(analysis.rules)
+                    runCheckCard
                 } else {
+                    runCheckCard
                     ContentUnavailableView(
                         "No Analysis Yet",
                         systemImage: "cube.transparent",
@@ -74,6 +32,61 @@ struct CheckView: View {
                 }
             }
             .padding(24)
+        }
+    }
+
+    private var runCheckCard: some View {
+        PanelCard(title: "Run Check", subtitle: "Use the Python backend already in this repo.") {
+            VStack(alignment: .leading, spacing: 14) {
+                dropZone
+
+                HStack(alignment: .center, spacing: 14) {
+                    Stepper(value: $model.quantity, in: 1...10_000) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text("Quantity")
+                                .font(.subheadline)
+                            Text("\(model.quantity)")
+                                .font(.title3.weight(.semibold))
+                        }
+                    }
+                    .frame(maxWidth: 220, alignment: .leading)
+
+                    Spacer()
+
+                    Button("Choose File") {
+                        model.pickStepFile()
+                    }
+                    .buttonStyle(.bordered)
+
+                    Button {
+                        Task {
+                            await model.analyzeSelectedFile()
+                        }
+                    } label: {
+                        if model.isAnalyzing {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Text("Run Analysis")
+                        }
+                    }
+                    .buttonStyle(.borderedProminent)
+                    .disabled(model.selectedFileURL == nil || !model.hasAnalysisRuntime || model.isAnalyzing)
+                }
+
+                if let selectedFileURL = model.selectedFileURL {
+                    Text(selectedFileURL.path)
+                        .font(.footnote.monospaced())
+                        .foregroundStyle(AppTheme.mutedText)
+                        .textSelection(.enabled)
+                }
+
+                if !model.hasAnalysisRuntime {
+                    Text("Analysis runtime is not currently available. Check Diagnostics to confirm the selected Python environment can import OCC.")
+                        .font(.subheadline)
+                        .foregroundStyle(AppTheme.warning)
+                }
+            }
         }
     }
 
@@ -171,6 +184,10 @@ struct CheckView: View {
                             .font(.footnote)
                             .foregroundStyle(AppTheme.mutedText)
 
+                        if let metricBarData = metricBarData(for: rule) {
+                            metricBar(metricBarData, passed: rule.passed)
+                        }
+
                         HStack(spacing: 18) {
                             smallStat("Detected", "\(rule.detectedFeatures)")
                             smallStat("Pass", "\(rule.passedFeatures)")
@@ -186,6 +203,94 @@ struct CheckView: View {
                 }
             }
         }
+    }
+
+    private func metricBar(_ data: RuleMetricBarData, passed: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            HStack {
+                Text("Metric Bar")
+                    .font(.caption.weight(.semibold))
+                    .foregroundStyle(AppTheme.accentColor)
+                Spacer()
+                Text(data.legend)
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.mutedText)
+            }
+
+            HStack {
+                Spacer(minLength: 0)
+
+                GeometryReader { geometry in
+                    let width = max(geometry.size.width, 1)
+                    let trackWidth = max(width - 4, 1)
+                    let thresholdX = data.thresholdPosition * trackWidth + 2
+                    let averageX = data.averagePosition * trackWidth + 2
+
+                    ZStack(alignment: .leading) {
+                        Capsule(style: .continuous)
+                            .fill(AppTheme.panelBorder.opacity(0.45))
+                            .frame(height: 8)
+
+                        markerLabel("T", color: AppTheme.accentColor)
+                            .position(x: thresholdX, y: 18)
+
+                        markerLabel(data.averagePosition == data.thresholdPosition ? "*" : "A", color: passed ? AppTheme.success : AppTheme.failure)
+                            .position(x: averageX, y: 18)
+                    }
+                }
+                .frame(width: 420, height: 30)
+
+                Spacer(minLength: 0)
+            }
+
+            HStack {
+                Text(data.metricLine)
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(AppTheme.mutedText)
+                Spacer()
+            }
+        }
+        .padding(.top, 4)
+    }
+
+    private func markerLabel(_ text: String, color: Color) -> some View {
+        Text(text)
+            .font(.caption2.weight(.bold))
+            .foregroundStyle(.white)
+            .frame(width: 18, height: 18)
+            .background(Circle().fill(color))
+    }
+
+    private func metricBarData(for rule: RulePayload) -> RuleMetricBarData? {
+        guard
+            let metricLabel = rule.metricLabel,
+            let averageDetected = rule.averageDetected,
+            let threshold = rule.threshold,
+            let thresholdKind = rule.thresholdKind,
+            thresholdKind == "min" || thresholdKind == "max"
+        else {
+            return nil
+        }
+
+        let upper = max(threshold * 2.0, averageDetected * 1.2, 1.0)
+        let thresholdPosition = clamp01(threshold / upper)
+        let averagePosition = clamp01(averageDetected / upper)
+        let legend = thresholdKind == "min" ? "min-ok >= T" : "max-ok <= T"
+        let metricLine = "\(metricLabel): avg=\(formatMetric(averageDetected)) threshold=\(formatMetric(threshold))"
+        return RuleMetricBarData(
+            thresholdPosition: thresholdPosition,
+            averagePosition: averagePosition,
+            legend: legend,
+            metricLine: metricLine
+        )
+    }
+
+    private func clamp01(_ value: Double) -> Double {
+        min(max(value, 0.0), 1.0)
+    }
+
+    private func formatMetric(_ value: Double) -> String {
+        value.formatted(.number.precision(.fractionLength(3)))
     }
 
     private func smallStat(_ label: String, _ value: String) -> some View {
@@ -221,4 +326,11 @@ struct CheckView: View {
     private func formatMultiplier(_ value: Double) -> String {
         "\(format(value))x"
     }
+}
+
+private struct RuleMetricBarData {
+    let thresholdPosition: Double
+    let averagePosition: Double
+    let legend: String
+    let metricLine: String
 }

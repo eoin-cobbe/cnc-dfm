@@ -135,6 +135,19 @@ def _handle_analyze(args: argparse.Namespace) -> int:
     return _emit_json(asdict(analysis))
 
 
+def _handle_preview(args: argparse.Namespace) -> int:
+    from dfm_preview import export_step_preview_stl
+
+    preview_path = export_step_preview_stl(args.input)
+    return _emit_json(
+        {
+            "sourcePath": str(Path(args.input).expanduser().resolve()),
+            "previewPath": str(preview_path),
+            "format": "stl",
+        }
+    )
+
+
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description="Machine-readable API for cnc-dfm app clients")
     subparsers = parser.add_subparsers(dest="command", required=True)
@@ -168,6 +181,10 @@ def build_parser() -> argparse.ArgumentParser:
         help="Persist config overrides before analysis",
     )
     analyze_parser.set_defaults(func=_handle_analyze)
+
+    preview_parser = subparsers.add_parser("preview", help="Generate a preview mesh for app rendering")
+    preview_parser.add_argument("--input", required=True, help="Path to input STEP file")
+    preview_parser.set_defaults(func=_handle_preview)
 
     return parser
 

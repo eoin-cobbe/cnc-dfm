@@ -59,6 +59,18 @@ struct MaterialsResponse: Decodable {
     let materials: [MaterialSpecPayload]
 }
 
+struct PreviewResponse: Decodable {
+    let sourcePath: String
+    let previewPath: String
+    let format: String
+
+    enum CodingKeys: String, CodingKey {
+        case sourcePath = "sourcePath"
+        case previewPath = "previewPath"
+        case format
+    }
+}
+
 struct MaterialSpecPayload: Decodable, Identifiable {
     let key: String
     let label: String

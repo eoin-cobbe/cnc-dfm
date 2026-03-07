@@ -23,6 +23,7 @@ cache/dfm_config.json
 .swift-clang-cache/
 .swiftpm-cache/
 apps/macos/CNCDFMApp/.build/
+apps/macos/CNCDFMApp/dist/
 
 # Editor settings
 .vscode/
