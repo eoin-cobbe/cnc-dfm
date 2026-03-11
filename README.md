@@ -1,36 +1,69 @@
+```text
+ ######  ##    ##  ######    ######  ######## ##     ##
+##    ## ###   ## ##    ##   ##   ## ##       ###   ###
+##       ####  ## ##         ##    ## ##       #### ####
+##       ## ## ## ##         ##    ## ######   ## ### ##
+##       ##  #### ##         ##    ## ##       ##  #  ##
+##    ## ##   ### ##    ##   ##   ##  ##       ##     ##
+ ######  ##    ##  ######    ######   ##       ##     ##
+```
+
 # cnc-dfm
 
-## What this project is
-`cnc-dfm` is a command-line Design for Manufacturing checker for CNC parts. Give it a STEP file and it analyzes geometry against six core machining rules, then returns a readable pass/fail report with a short explanation for each rule.
+`cnc-dfm` checks CNC STEP files against core manufacturability rules.
 
-CLI command docs are in `/Users/eoincobbe/dev/cnc-dfm/docs/CLI_API.md` (regenerate with `make docs-cli`).
+It has two ways to use it:
 
-## Install (one time)
+- `Terminal`: fast CLI workflow
+- `macOS App`: native viewer and analysis UI
+
+## Install
+
 ```bash
 git clone https://github.com/eoin-cobbe/cnc-dfm.git
 cd cnc-dfm
 ./scripts/install.sh
+```
+
+## Terminal
+
+One-time setup:
+
+```bash
 run config
 ```
 
-`run config` starts an interactive setup wizard and saves your Rule 1 to Rule 6 thresholds plus material selection permanently.  
-Run it again anytime to overwrite and update the saved values.
+Run a part:
 
-## Use it (2 steps, every time)
-
-1. Open terminal and go to the folder that contains your STEP file.
 ```bash
 cd /path/to/your/part/folder
-```
-
-2. Run the checker.
-```bash
 run
 ```
 
-`run` opens an in-terminal STEP picker.  
-If you already know the file path, you can run directly:
-`run /path/to/part.step`.
+Or run directly on a file:
 
-If you did not add global `run`, use:
-`/path/to/cnc-dfm/run /path/to/part.step`
+```bash
+run /path/to/part.step
+```
+
+## macOS App
+
+Build the macOS dist:
+
+```bash
+cd apps/macos/CNCDFMApp
+./Scripts/build-local-app.sh
+```
+
+A macOS `.app` dist is then available at `apps/macos/CNCDFMApp/dist/CNCDFMApp.app`.
+
+Open it:
+
+```bash
+open dist/CNCDFMApp.app
+```
+
+## Docs
+
+- CLI commands: [docs/CLI_API.md](docs/CLI_API.md)
+- macOS app notes: [apps/macos/CNCDFMApp/README.md](apps/macos/CNCDFMApp/README.md)

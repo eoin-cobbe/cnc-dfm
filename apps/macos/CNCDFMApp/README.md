@@ -21,6 +21,7 @@ There are two different ways to run it:
 
 1. development run from source
 2. local native `.app` bundle built from this repo
+3. self-contained `.app` bundle for packaging tests
 
 Portable downloadable distribution for other users is a separate packaging step because the backend runtime still has to be bundled in a relocatable way.
 
@@ -72,6 +73,42 @@ To open it:
 ./Scripts/open-local-app.sh
 ```
 
+## Build A Self-Contained Test App
+
+```bash
+./Scripts/build-bundled-app.sh
+```
+
+That produces:
+
+```text
+dist/CNCDFMApp-bundled.app
+```
+
+This bundle includes:
+
+- the app binary
+- the Python backend source
+- the Python runtime used by the backend
+
+To smoke-test the embedded backend directly:
+
+```bash
+./Scripts/test-bundled-backend.sh
+```
+
+To open the bundled app:
+
+```bash
+./Scripts/open-bundled-app.sh
+```
+
+To prove the embedded backend still works after copying the app outside the repo:
+
+```bash
+./Scripts/test-bundled-relocated.sh
+```
+
 ## What Counts As A Downloadable Release
 
 For other people to download and click without needing your repo checkout, the app bundle needs:
@@ -81,4 +118,4 @@ For other people to download and click without needing your repo checkout, the a
 - app packaging output such as `.zip` or `.dmg`
 - ideally code signing and notarization for smooth macOS launch behavior
 
-That is the next packaging phase, not the current local-development phase.
+The self-contained test app gets you most of the way there technically. A real public download still needs release packaging, testing on a clean machine, and signing/notarization.
