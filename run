@@ -8,94 +8,14 @@ while [ -L "${SOURCE}" ]; do
   [[ "${SOURCE}" != /* ]] && SOURCE="${DIR}/${SOURCE}"
 done
 ROOT_DIR="$(cd -P "$(dirname "${SOURCE}")" && pwd)"
-ENV_DIR="${ROOT_DIR}/.conda-env"
-FZF_BIN="${ENV_DIR}/bin/fzf"
-FD_BIN="${ENV_DIR}/bin/fd"
 
-if [[ $# -ge 1 ]]; then
-  case "$1" in
-    config|configure|init)
-      shift
-      exec "${ROOT_DIR}/scripts/config.sh" "$@"
-      ;;
-    show-config)
-      if [[ ! -x "${ENV_DIR}/bin/python" ]]; then
-        mamba create -y -p "${ENV_DIR}" python=3.11 pythonocc-core pip fzf fd-find
-      fi
-      exec "${ENV_DIR}/bin/python" "${ROOT_DIR}/src/dfm_config.py" --show
-      ;;
-  esac
+if command -v python3 >/dev/null 2>&1; then
+  exec python3 "${ROOT_DIR}/src/dfm_cli.py" "$@"
 fi
 
-if [[ ! -x "${FD_BIN}" && -x "${ENV_DIR}/bin/fdfind" ]]; then
-  FD_BIN="${ENV_DIR}/bin/fdfind"
+if command -v python >/dev/null 2>&1; then
+  exec python "${ROOT_DIR}/src/dfm_cli.py" "$@"
 fi
 
-pick_step_file() {
-  local selection=""
-  local fzf_cmd=""
-  local fd_cmd=""
-
-  if [[ -x "${FZF_BIN}" ]]; then
-    fzf_cmd="${FZF_BIN}"
-  elif command -v fzf >/dev/null 2>&1; then
-    fzf_cmd="$(command -v fzf)"
-  fi
-
-  if [[ -x "${FD_BIN}" ]]; then
-    fd_cmd="${FD_BIN}"
-  elif command -v fd >/dev/null 2>&1; then
-    fd_cmd="$(command -v fd)"
-  elif command -v fdfind >/dev/null 2>&1; then
-    fd_cmd="$(command -v fdfind)"
-  fi
-
-  if [[ -n "${fzf_cmd}" ]]; then
-    if [[ -n "${fd_cmd}" ]]; then
-      selection="$("${fd_cmd}" --type f --extension step --extension stp . "${PWD}" | "${fzf_cmd}" --height=50% --layout=reverse --border --prompt='Select STEP file > ')"
-    else
-      selection="$(find "${PWD}" -type f \( -iname '*.step' -o -iname '*.stp' \) | sort | "${fzf_cmd}" --height=50% --layout=reverse --border --prompt='Select STEP file > ')"
-    fi
-    printf '%s\n' "${selection}"
-    return 0
-  fi
-
-  mapfile -t candidates < <(find "${PWD}" -type f \( -iname '*.step' -o -iname '*.stp' \) | sort)
-  if [[ ${#candidates[@]} -eq 0 ]]; then
-    echo ""
-    return 0
-  fi
-
-  echo "Select STEP file:"
-  local i=1
-  for file in "${candidates[@]}"; do
-    printf "  %d) %s\n" "${i}" "${file}"
-    ((i++))
-  done
-  printf "Enter number: "
-  read -r choice
-  if [[ ! "${choice}" =~ ^[0-9]+$ ]]; then
-    echo ""
-    return 0
-  fi
-  if (( choice < 1 || choice > ${#candidates[@]} )); then
-    echo ""
-    return 0
-  fi
-  printf '%s\n' "${candidates[$((choice - 1))]}"
-}
-
-if [[ $# -eq 0 ]]; then
-  if [[ ! -t 0 ]]; then
-    echo "Usage: run /path/to/file.step [extra dfm args]"
-    exit 1
-  fi
-  STEP_FILE="$(pick_step_file)"
-  if [[ -z "${STEP_FILE}" ]]; then
-    echo "No STEP file selected."
-    exit 1
-  fi
-  set -- "${STEP_FILE}"
-fi
-
-exec "${ROOT_DIR}/scripts/run.sh" "$@"
+echo "python3 is required to run cnc-dfm."
+exit 1

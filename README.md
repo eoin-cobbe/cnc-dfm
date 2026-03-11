@@ -17,12 +17,27 @@ It has two ways to use it:
 - `Terminal`: fast CLI workflow
 - `macOS App`: native viewer and analysis UI
 
-## Install
+## Terminal Install
+
+Prerequisites:
+
+- Install Miniforge, Conda, or Mamba first.
+- The installer then creates this repo's own `.conda-env` and installs Python and `pythonocc-core` into it.
+
+macOS / Linux:
 
 ```bash
 git clone https://github.com/eoin-cobbe/cnc-dfm.git
 cd cnc-dfm
 ./scripts/install.sh
+```
+
+Windows PowerShell:
+
+```powershell
+git clone https://github.com/eoin-cobbe/cnc-dfm.git
+cd cnc-dfm
+powershell -ExecutionPolicy Bypass -File .\scripts\install.ps1
 ```
 
 ## Terminal
