@@ -18,6 +18,7 @@ conda-meta/
 
 # Local CNC-DFM runtime config
 cache/dfm_config.json
+cache/previews/
 
 # Swift/macOS app build artifacts
 .swift-clang-cache/
