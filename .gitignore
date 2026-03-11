@@ -18,6 +18,13 @@ conda-meta/
 
 # Local CNC-DFM runtime config
 cache/dfm_config.json
+cache/previews/
+
+# Swift/macOS app build artifacts
+.swift-clang-cache/
+.swiftpm-cache/
+apps/macos/CNCDFMApp/.build/
+apps/macos/CNCDFMApp/dist/
 
 # Editor settings
 .vscode/

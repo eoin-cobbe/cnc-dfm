@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Dict, Optional, Tuple
+from typing import Dict, List, Optional, Tuple
 
 
 @dataclass
@@ -101,3 +101,20 @@ class PartProcessData:
     machining_cost: float
     total_estimated_cost_eur: float
     batch_total_estimated_cost_eur: float
+
+
+@dataclass
+class AnalysisSummary:
+    passed: bool
+    total_rule_count: int
+    passed_rule_count: int
+    failed_rule_count: int
+    rule_multiplier: float
+
+
+@dataclass
+class AnalysisResult:
+    file_path: str
+    process_data: PartProcessData
+    rules: List[RuleResult]
+    summary: AnalysisSummary
