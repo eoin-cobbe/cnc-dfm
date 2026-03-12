@@ -152,12 +152,114 @@ struct AnalysisResponse: Decodable {
     let processData: PartProcessDataPayload
     let rules: [RulePayload]
     let summary: AnalysisSummaryPayload
+    let recommendations: [RecommendationPayload]
 
     enum CodingKeys: String, CodingKey {
         case filePath = "file_path"
         case processData = "process_data"
         case rules
         case summary
+        case recommendations
+    }
+}
+
+struct RecommendationPayload: Decodable, Identifiable {
+    let kind: String
+    let priority: Int
+    let title: String
+    let summary: String
+    let impact: String
+    let actions: [String]
+    let source: String
+    let featureInsights: [FeatureInsightPayload]
+
+    var id: String { "\(kind)-\(source)-\(title)" }
+
+    enum CodingKeys: String, CodingKey {
+        case kind
+        case priority
+        case title
+        case summary
+        case impact
+        case actions
+        case source
+        case featureInsights = "feature_insights"
+    }
+}
+
+struct FeatureInsightPayload: Decodable, Identifiable, Hashable {
+    let id: String
+    let summary: String
+    let highlightKind: String
+    let axis: String?
+    let measuredValue: Double?
+    let targetValue: Double?
+    let units: String?
+    let anchor: Point3Payload?
+    let segmentStart: Point3Payload?
+    let segmentEnd: Point3Payload?
+    let overlayMeshPaths: [String]
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case summary
+        case highlightKind = "highlight_kind"
+        case axis
+        case measuredValue = "measured_value"
+        case targetValue = "target_value"
+        case units
+        case anchor
+        case segmentStart = "segment_start"
+        case segmentEnd = "segment_end"
+        case overlayMeshPaths = "overlay_mesh_paths"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        summary = try container.decode(String.self, forKey: .summary)
+        highlightKind = try container.decode(String.self, forKey: .highlightKind)
+        axis = try container.decodeIfPresent(String.self, forKey: .axis)
+        measuredValue = try container.decodeIfPresent(Double.self, forKey: .measuredValue)
+        targetValue = try container.decodeIfPresent(Double.self, forKey: .targetValue)
+        units = try container.decodeIfPresent(String.self, forKey: .units)
+        anchor = try container.decodeIfPresent(Point3Payload.self, forKey: .anchor)
+        segmentStart = try container.decodeIfPresent(Point3Payload.self, forKey: .segmentStart)
+        segmentEnd = try container.decodeIfPresent(Point3Payload.self, forKey: .segmentEnd)
+        overlayMeshPaths = try container.decodeIfPresent([String].self, forKey: .overlayMeshPaths) ?? []
+    }
+}
+
+struct Point3Payload: Decodable, Hashable {
+    let x: Double
+    let y: Double
+    let z: Double
+}
+
+struct RecommendationFeatureGroup: Identifiable, Hashable {
+    let id: String
+    let summary: String
+    let instances: [FeatureInsightPayload]
+
+    var count: Int { instances.count }
+}
+
+extension RecommendationPayload {
+    var featureGroups: [RecommendationFeatureGroup] {
+        var order: [String] = []
+        var grouped: [String: [FeatureInsightPayload]] = [:]
+        for insight in featureInsights {
+            if grouped[insight.summary] == nil {
+                order.append(insight.summary)
+            }
+            grouped[insight.summary, default: []].append(insight)
+        }
+        return order.compactMap { summary in
+            guard let instances = grouped[summary] else {
+                return nil
+            }
+            return RecommendationFeatureGroup(id: summary, summary: summary, instances: instances)
+        }
     }
 }
 
@@ -316,5 +418,72 @@ struct PartProcessDataPayload: Decodable {
         case machiningCost = "machining_cost"
         case totalEstimatedCostEur = "total_estimated_cost_eur"
         case batchTotalEstimatedCostEur = "batch_total_estimated_cost_eur"
+    }
+}
+
+extension PartProcessDataPayload {
+    func applyingQuantity(_ quantity: Int, qtyLearningRate: Double, qtyFactorFloor: Double) -> PartProcessDataPayload {
+        let qtySafe = max(1, quantity)
+        let learningRate = max(1e-6, min(qtyLearningRate, 1.0))
+        let factorFloor = max(1e-6, min(qtyFactorFloor, 1.0))
+        let learningExponent = Foundation.log(learningRate) / Foundation.log(2.0)
+        let qtyMultiplier = max(factorFloor, Foundation.pow(Double(qtySafe), learningExponent))
+        let qtyAdjustedMachiningTimeMin = baseMachiningTimeMin * qtyMultiplier
+        let machiningCost = (qtyAdjustedMachiningTimeMin / 60.0) * machineHourlyRateEur
+        let baseMachiningCost = (baseMachiningTimeMin / 60.0) * machineHourlyRateEur
+        let totalEstimatedCostEur = (materialStockCostEur + baseMachiningCost) * qtyMultiplier
+        let batchTotalEstimatedCostEur = totalEstimatedCostEur * Double(qtySafe)
+
+        return PartProcessDataPayload(
+            materialKey: materialKey,
+            materialLabel: materialLabel,
+            partBBoxXMm: partBBoxXMm,
+            partBBoxYMm: partBBoxYMm,
+            partBBoxZMm: partBBoxZMm,
+            stockBBoxXMm: stockBBoxXMm,
+            stockBBoxYMm: stockBBoxYMm,
+            stockBBoxZMm: stockBBoxZMm,
+            volumeMm3: volumeMm3,
+            stockVolumeMm3: stockVolumeMm3,
+            removedVolumeMm3: removedVolumeMm3,
+            partSurfaceAreaMm2: partSurfaceAreaMm2,
+            partSavRatio: partSavRatio,
+            bboxSavRatio: bboxSavRatio,
+            surfaceAreaRatio: surfaceAreaRatio,
+            surfaceAreaMultiplier: surfaceAreaMultiplier,
+            surfaceComplexityFaces: surfaceComplexityFaces,
+            complexityMultiplier: complexityMultiplier,
+            densityKgPerM3: densityKgPerM3,
+            massKg: massKg,
+            stockMassKg: stockMassKg,
+            materialBilletCostEurPerKg: materialBilletCostEurPerKg,
+            materialFixedCostEur: materialFixedCostEur,
+            materialStockCostEur: materialStockCostEur,
+            materialBilletCostSource: materialBilletCostSource,
+            materialFixedCostSource: materialFixedCostSource,
+            requiredSetupDirections: requiredSetupDirections,
+            machineType: machineType,
+            holeCount: holeCount,
+            holeCountMultiplier: holeCountMultiplier,
+            radiusCount: radiusCount,
+            radiusCountMultiplier: radiusCountMultiplier,
+            machinabilityIndex: machinabilityIndex,
+            machinabilitySource: machinabilitySource,
+            baseline6061MrrMm3PerMin: baseline6061MrrMm3PerMin,
+            materialTimeMultiplier: materialTimeMultiplier,
+            ruleMultiplier: ruleMultiplier,
+            totalTimeMultiplier: totalTimeMultiplier,
+            qty: qtySafe,
+            qtyMultiplier: qtyMultiplier,
+            estimatedRoughingMrrMm3PerMin: estimatedRoughingMrrMm3PerMin,
+            roughingTimeMin: roughingTimeMin,
+            baseMachiningTimeMin: baseMachiningTimeMin,
+            machiningTimeMin: machiningTimeMin,
+            machineHourlyRateEur: machineHourlyRateEur,
+            roughingCost: roughingCost,
+            machiningCost: machiningCost,
+            totalEstimatedCostEur: totalEstimatedCostEur,
+            batchTotalEstimatedCostEur: batchTotalEstimatedCostEur
+        )
     }
 }

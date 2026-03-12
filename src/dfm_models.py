@@ -1,7 +1,29 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
+
+
+@dataclass
+class FeatureInsight:
+    id: str
+    summary: str
+    highlight_kind: str = "point"
+    axis: Optional[str] = None
+    measured_value: Optional[float] = None
+    target_value: Optional[float] = None
+    units: Optional[str] = None
+    anchor: Optional["Point3D"] = None
+    segment_start: Optional["Point3D"] = None
+    segment_end: Optional["Point3D"] = None
+    overlay_mesh_paths: List[str] = field(default_factory=list)
+
+
+@dataclass
+class Point3D:
+    x: float
+    y: float
+    z: float
 
 
 @dataclass
@@ -21,6 +43,8 @@ class RuleResult:
     threshold: Optional[float] = None
     threshold_kind: Optional[str] = None  # "max" or "min"
     rule_multiplier: float = 1.0
+    feature_insights: List[FeatureInsight] = field(default_factory=list)
+    all_feature_insights: List[FeatureInsight] = field(default_factory=list)
 
 
 @dataclass
@@ -113,8 +137,21 @@ class AnalysisSummary:
 
 
 @dataclass
+class Recommendation:
+    kind: str
+    priority: int
+    title: str
+    summary: str
+    impact: str
+    actions: List[str]
+    source: str
+    feature_insights: List[FeatureInsight] = field(default_factory=list)
+
+
+@dataclass
 class AnalysisResult:
     file_path: str
     process_data: PartProcessData
     rules: List[RuleResult]
     summary: AnalysisSummary
+    recommendations: List[Recommendation]

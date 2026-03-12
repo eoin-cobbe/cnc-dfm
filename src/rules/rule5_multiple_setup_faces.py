@@ -12,6 +12,7 @@ from OCC.Core.TopExp import TopExp_Explorer
 from OCC.Core.TopoDS import TopoDS_Face, TopoDS_Shape, topods
 from OCC.Core.gp import gp_Dir, gp_Pnt
 
+from dfm_feature_descriptions import average_point, feature_id, point3d
 from dfm_geometry import (
     collect_faces,
     face_midpoint_and_normal,
@@ -20,7 +21,8 @@ from dfm_geometry import (
     offset_is_outside,
     shape_bbox,
 )
-from dfm_models import Config, RuleResult
+from dfm_models import Config, FeatureInsight, RuleResult
+from dfm_preview import export_feature_overlay_stl
 from dfm_scoring import rule_multiplier_from_threshold
 from .rule4_hole_depth_vs_diameter import _is_hole_like_internal_cylinder
 
@@ -188,9 +190,9 @@ def _feature_reachable_setups(shape: TopoDS_Shape, face: TopoDS_Face, cfg: Confi
     return reachable
 
 
-def _collect_feature_access_sets(shape: TopoDS_Shape, cfg: Config) -> List[Set[str]]:
+def _collect_feature_access_details(shape: TopoDS_Shape, cfg: Config) -> List[dict]:
     edge_face_map = get_edge_face_map(shape)
-    features: List[Set[str]] = []
+    features: List[dict] = []
     seen: Set[Tuple[float, float, float, float, float]] = set()
 
     for face in collect_faces(shape):
@@ -220,7 +222,7 @@ def _collect_feature_access_sets(shape: TopoDS_Shape, cfg: Config) -> List[Set[s
         seen.add(key)
         reachable = _feature_reachable_setups(shape, face, cfg)
         if reachable:
-            features.append(reachable)
+            features.append({"reachable": reachable, "face": face, "midpoint": _cylinder_midpoint(face)})
             continue
 
         # Fallback if the access probe is inconclusive: preserve the feature on its
@@ -231,9 +233,13 @@ def _collect_feature_access_sets(shape: TopoDS_Shape, cfg: Config) -> List[Set[s
                 fallback.add(_setup_key(cap_axis, cap_side))
         if not fallback:
             fallback.add(_setup_key(axis_name, "+"))
-        features.append(fallback)
+        features.append({"reachable": fallback, "face": face, "midpoint": _cylinder_midpoint(face)})
 
     return features
+
+
+def _collect_feature_access_sets(shape: TopoDS_Shape, cfg: Config) -> List[Set[str]]:
+    return [detail["reachable"] for detail in _collect_feature_access_details(shape, cfg)]
 
 
 def _minimum_setup_cover(features: List[Set[str]]) -> Set[str]:
@@ -264,8 +270,9 @@ def required_setup_directions(shape: TopoDS_Shape, cfg: Config) -> Set[str]:
     return _minimum_setup_cover(feature_access_sets)
 
 
-def evaluate_multiple_setup_faces(shape: TopoDS_Shape, cfg: Config) -> RuleResult:
-    feature_access_sets = _collect_feature_access_sets(shape, cfg)
+def evaluate_multiple_setup_faces(shape: TopoDS_Shape, cfg: Config, step_file: str | None = None) -> RuleResult:
+    feature_details = _collect_feature_access_details(shape, cfg)
+    feature_access_sets = [detail["reachable"] for detail in feature_details]
     setup_keys = _minimum_setup_cover(feature_access_sets)
     setups = len(setup_keys)
     fail_count = max(setups - cfg.max_setups, 0)
@@ -285,6 +292,43 @@ def evaluate_multiple_setup_faces(shape: TopoDS_Shape, cfg: Config) -> RuleResul
         threshold=float(cfg.max_setups),
         threshold_kind="max",
     )
+    feature_insights: List[FeatureInsight] = []
+    for setup_key in sorted(setup_keys):
+        setup_details = [item for item in feature_details if setup_key in item["reachable"]]
+        if not setup_details:
+            continue
+        midpoint = average_point(detail["midpoint"] for detail in setup_details)
+        overlay_mesh_paths = (
+            export_feature_overlay_stl(
+                step_file,
+                feature_id(
+                    "rule5-overlay",
+                    setup_key,
+                    round(midpoint.X(), 3),
+                    round(midpoint.Y(), 3),
+                    round(midpoint.Z(), 3),
+                ),
+                [detail["face"] for detail in setup_details],
+            )
+            if step_file is not None
+            else []
+        )
+        feature_insights.append(
+            FeatureInsight(
+                id=feature_id(
+                    "rule5",
+                    setup_key,
+                    round(midpoint.X(), 3),
+                    round(midpoint.Y(), 3),
+                    round(midpoint.Z(), 3),
+                ),
+                summary=f"{len(setup_details)} feature(s) requiring the {setup_key} setup direction.",
+                highlight_kind="face",
+                axis=setup_key[0],
+                anchor=point3d(midpoint),
+                overlay_mesh_paths=overlay_mesh_paths,
+            )
+        )
     return RuleResult(
         name="Rule 5 — Multiple Setup Faces",
         passed=passed,
@@ -302,4 +346,5 @@ def evaluate_multiple_setup_faces(shape: TopoDS_Shape, cfg: Config) -> RuleResul
         threshold=float(cfg.max_setups),
         threshold_kind="max",
         rule_multiplier=rule_mult,
+        feature_insights=feature_insights,
     )

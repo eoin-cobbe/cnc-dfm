@@ -119,3 +119,52 @@ For other people to download and click without needing your repo checkout, the a
 - ideally code signing and notarization for smooth macOS launch behavior
 
 The self-contained test app gets you most of the way there technically. A real public download still needs release packaging, testing on a clean machine, and signing/notarization.
+
+## Build A GitHub Release Artifact
+
+Create a versioned zip from the bundled app:
+
+```bash
+VERSION=0.1.0 BUILD_NUMBER=1 ./Scripts/package-release-zip.sh
+```
+
+That produces:
+
+```text
+dist/CNCDFMApp-0.1.0-macos.zip
+```
+
+This script:
+
+- rebuilds `dist/CNCDFMApp-bundled.app`
+- stamps the app bundle version in `Info.plist`
+- optionally applies Developer ID signing if `CODESIGN_IDENTITY` is set
+- zips the `.app` with `ditto` so Finder metadata is preserved
+
+Example with signing:
+
+```bash
+VERSION=0.1.0 BUILD_NUMBER=1 \
+CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAMID)" \
+./Scripts/package-release-zip.sh
+```
+
+Upload the generated zip to GitHub Releases as the macOS desktop artifact.
+
+For a smooth public install experience, notarize the signed zip before uploading:
+
+```bash
+xcrun notarytool submit dist/CNCDFMApp-0.1.0-macos.zip \
+  --apple-id "you@example.com" \
+  --team-id "TEAMID" \
+  --password "app-specific-password" \
+  --wait
+
+xcrun stapler staple dist/CNCDFMApp-bundled.app
+```
+
+After stapling, recreate the zip without rebuilding or re-signing so the stapled app is what you upload:
+
+```bash
+VERSION=0.1.0 SKIP_BUILD=1 SKIP_SIGN=1 ./Scripts/package-release-zip.sh
+```

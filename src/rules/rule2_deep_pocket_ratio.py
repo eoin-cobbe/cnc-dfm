@@ -11,13 +11,16 @@ from OCC.Core.TopoDS import topods
 from OCC.Core.TopoDS import TopoDS_Face, TopoDS_Shape
 from OCC.Core.gp import gp_Dir
 
+from dfm_feature_descriptions import average_point, feature_id, format_mm, format_ratio, nearest_axis_side, point3d
 from dfm_geometry import (
     face_midpoint_and_normal,
     is_wall_face_for_axis,
+    shape_bounds,
     shape_bbox,
     signed_distance_between_planes,
 )
-from dfm_models import Config, RuleResult
+from dfm_models import Config, FeatureInsight, RuleResult
+from dfm_preview import export_feature_overlay_stl
 from dfm_scoring import rule_multiplier_from_threshold
 from .rule1_internal_corner_radius import detect_internal_corner_features
 
@@ -296,13 +299,15 @@ def _opening_from_pocket_features(pocket_features: List[dict], axis_name: str) -
     return min(row["dist"] for row in pair_rows)
 
 
-def evaluate_deep_pocket_ratio(shape: TopoDS_Shape, cfg: Config) -> RuleResult:
+def evaluate_deep_pocket_ratio(shape: TopoDS_Shape, cfg: Config, step_file: str | None = None) -> RuleResult:
     features_by_axis = detect_internal_corner_features(shape)
+    bounds = shape_bounds(shape)
     axis_breakdown: Dict[str, Tuple[int, int, int]] = {}
     detected = 0
     offenders = 0
     worst_ratio = 0.0
     ratios: List[float] = []
+    feature_insight_rows: List[Tuple[float, FeatureInsight]] = []
 
     for axis_name, axis_features in features_by_axis.items():
         layers = _group_corner_features_by_depth(axis_features, tol_mm=0.5)
@@ -327,6 +332,56 @@ def evaluate_deep_pocket_ratio(shape: TopoDS_Shape, cfg: Config) -> RuleResult:
                 worst_ratio = max(worst_ratio, ratio)
                 if ratio > cfg.max_pocket_depth_ratio:
                     axis_offenders += 1
+                    anchor_point = average_point(feature["midpoint"] for feature in pocket_features)
+                    side = nearest_axis_side(anchor_point, bounds, axis_name)
+                    overlay_faces: List[TopoDS_Face] = []
+                    axis_dir = _axis_dir(axis_name)
+                    for feature in pocket_features:
+                        for face in _feature_axis_wall_faces(feature, axis_dir):
+                            if all(not existing.IsSame(face) for existing in overlay_faces):
+                                overlay_faces.append(face)
+                    overlay_mesh_paths = (
+                        export_feature_overlay_stl(
+                            step_file,
+                            feature_id(
+                                "rule2-overlay",
+                                axis_name,
+                                round(anchor_point.X(), 3),
+                                round(anchor_point.Y(), 3),
+                                round(anchor_point.Z(), 3),
+                                round(ratio, 3),
+                            ),
+                            overlay_faces,
+                        )
+                        if step_file is not None
+                        else []
+                    )
+                    feature_insight_rows.append(
+                        (
+                            ratio,
+                            FeatureInsight(
+                                id=feature_id(
+                                    "rule2",
+                                    axis_name,
+                                    round(anchor_point.X(), 3),
+                                    round(anchor_point.Y(), 3),
+                                    round(anchor_point.Z(), 3),
+                                    round(ratio, 3),
+                                ),
+                                summary=(
+                                    f"Pocket about {format_mm(depth)} deep with a {format_mm(opening)} opening on the "
+                                    f"{side} side (depth/opening {format_ratio(ratio)})."
+                                ),
+                                highlight_kind="pocket",
+                                axis=axis_name,
+                                measured_value=ratio,
+                                target_value=cfg.max_pocket_depth_ratio,
+                                units="ratio",
+                                anchor=point3d(anchor_point),
+                                overlay_mesh_paths=overlay_mesh_paths,
+                            ),
+                        )
+                    )
 
         axis_pass = max(axis_detected - axis_offenders, 0)
         axis_breakdown[axis_name] = (axis_detected, axis_pass, axis_offenders)
@@ -365,4 +420,5 @@ def evaluate_deep_pocket_ratio(shape: TopoDS_Shape, cfg: Config) -> RuleResult:
         threshold=cfg.max_pocket_depth_ratio,
         threshold_kind="max",
         rule_multiplier=rule_mult,
+        feature_insights=[insight for _score, insight in sorted(feature_insight_rows, key=lambda row: row[0], reverse=True)],
     )
