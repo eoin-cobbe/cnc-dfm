@@ -17,6 +17,7 @@ struct CheckView: View {
                     }
 
                     summarySection(analysis)
+                    recommendationsSection(analysis.recommendations)
                     processSection(analysis.processData)
                     rulesSection(analysis.rules)
                     runCheckCard
@@ -133,6 +134,9 @@ struct CheckView: View {
                     .foregroundStyle(analysis.summary.passed ? AppTheme.success : AppTheme.failure)
                     keyValueRow("File", analysis.filePath)
                     keyValueRow("Rule Multiplier", formatMultiplier(analysis.summary.ruleMultiplier))
+                    if let topRecommendation = analysis.recommendations.first {
+                        keyValueRow("Top Recommendation", topRecommendation.title)
+                    }
                 }
             }
 
@@ -141,6 +145,58 @@ struct CheckView: View {
                     keyValueRow("Unit Estimate", formatCurrency(analysis.processData.totalEstimatedCostEur))
                     keyValueRow("Batch Estimate", formatCurrency(analysis.processData.batchTotalEstimatedCostEur))
                     keyValueRow("Machine Type", analysis.processData.machineType)
+                }
+            }
+        }
+    }
+
+    private func recommendationsSection(_ recommendations: [RecommendationPayload]) -> some View {
+        PanelCard(
+            title: "Recommendations",
+            subtitle: recommendations.first?.kind == "blocker" ? "Fix blockers first, then reduce cost drivers." : "Prioritized design guidance from the analysis."
+        ) {
+            VStack(alignment: .leading, spacing: 14) {
+                ForEach(recommendations) { recommendation in
+                    VStack(alignment: .leading, spacing: 10) {
+                        HStack(alignment: .top, spacing: 10) {
+                            recommendationBadge(recommendation.kind)
+
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text(recommendation.title)
+                                    .font(.headline)
+                                Text(recommendation.summary)
+                                    .font(.subheadline)
+                            }
+
+                            Spacer()
+
+                            Text("P\(recommendation.priority)")
+                                .font(.caption.monospacedDigit().weight(.semibold))
+                                .foregroundStyle(AppTheme.mutedText)
+                        }
+
+                        Text(recommendation.impact)
+                            .font(.footnote)
+                            .foregroundStyle(AppTheme.mutedText)
+
+                        VStack(alignment: .leading, spacing: 6) {
+                            ForEach(recommendation.actions, id: \.self) { action in
+                                HStack(alignment: .top, spacing: 8) {
+                                    Text("-")
+                                    Text(action)
+                                }
+                                .font(.footnote)
+                            }
+                        }
+
+                        Text("Source: \(recommendation.source)")
+                            .font(.caption)
+                            .foregroundStyle(AppTheme.mutedText)
+                    }
+
+                    if recommendation.id != recommendations.last?.id {
+                        Divider()
+                    }
                 }
             }
         }
@@ -259,6 +315,33 @@ struct CheckView: View {
             .foregroundStyle(.white)
             .frame(width: 18, height: 18)
             .background(Circle().fill(color))
+    }
+
+    private func recommendationBadge(_ kind: String) -> some View {
+        let text: String
+        let color: Color
+
+        switch kind {
+        case "blocker":
+            text = "BLOCKER"
+            color = AppTheme.failure
+        case "cost":
+            text = "COST"
+            color = AppTheme.warning
+        default:
+            text = "INFO"
+            color = AppTheme.success
+        }
+
+        return Text(text)
+            .font(.caption2.weight(.bold))
+            .foregroundStyle(color)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(color.opacity(0.12))
+            )
     }
 
     private func metricBarData(for rule: RulePayload) -> RuleMetricBarData? {

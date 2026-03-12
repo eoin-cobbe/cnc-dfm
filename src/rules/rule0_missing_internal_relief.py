@@ -4,10 +4,10 @@ import math
 from typing import Dict, List, Optional, Tuple
 
 from OCC.Core.BRep import BRep_Tool
-from OCC.Core.BRepAdaptor import BRepAdaptor_Surface
+from OCC.Core.BRepAdaptor import BRepAdaptor_Curve, BRepAdaptor_Surface
 from OCC.Core.BRepBndLib import brepbndlib
 from OCC.Core.Bnd import Bnd_Box
-from OCC.Core.GeomAbs import GeomAbs_Plane
+from OCC.Core.GeomAbs import GeomAbs_Line, GeomAbs_Plane
 from OCC.Core.Precision import precision
 from OCC.Core.TopAbs import TopAbs_EDGE, TopAbs_FACE, TopAbs_VERTEX
 from OCC.Core.TopExp import TopExp_Explorer, topexp
@@ -15,6 +15,7 @@ from OCC.Core.TopoDS import TopoDS_Edge, TopoDS_Face, TopoDS_Shape, TopoDS_Verte
 from OCC.Core.TopTools import TopTools_IndexedDataMapOfShapeListOfShape, TopTools_ListIteratorOfListOfShape
 from OCC.Core.gp import gp_Dir
 
+from dfm_feature_descriptions import format_mm
 from dfm_geometry import (
     face_midpoint_and_normal,
     faces_for_edge,
@@ -24,7 +25,7 @@ from dfm_geometry import (
     shape_bbox,
     shape_centroid,
 )
-from dfm_models import Config, RuleResult
+from dfm_models import Config, FeatureInsight, RuleResult
 from dfm_scoring import rule_multiplier_from_fail_fraction
 
 AXIS_DIRS: Dict[str, gp_Dir] = {
@@ -83,21 +84,50 @@ def _unique_faces(faces: List[TopoDS_Face]) -> List[TopoDS_Face]:
 
 
 def _dominant_axis_from_edge(edge: TopoDS_Edge) -> Optional[str]:
+    direction = _edge_line_direction(edge)
+    if direction is None:
+        return None
+    min_axis_dot = math.cos(math.radians(8.0))
+    axis_name = None
+    axis_dot = -1.0
+    for candidate_axis, candidate_dir in AXIS_DIRS.items():
+        dot = abs(direction.XYZ().Dot(candidate_dir.XYZ()))
+        if dot > axis_dot:
+            axis_dot = dot
+            axis_name = candidate_axis
+    if axis_name is None or axis_dot < min_axis_dot:
+        return None
+
+    components = _edge_axis_components(edge)
+    if components is None:
+        return None
+    axis = max(components, key=components.get)
+    if axis != axis_name:
+        return None
+    if components[axis_name] <= precision.Confusion():
+        return None
+    return axis_name
+
+
+def _edge_line_direction(edge: TopoDS_Edge) -> Optional[gp_Dir]:
+    curve = BRepAdaptor_Curve(edge)
+    if curve.GetType() != GeomAbs_Line:
+        return None
+    return curve.Line().Direction()
+
+
+def _edge_axis_components(edge: TopoDS_Edge) -> Optional[Dict[str, float]]:
     v_start = topods.Vertex(topexp.FirstVertex(edge))
     v_end = topods.Vertex(topexp.LastVertex(edge))
     if v_start.IsNull() or v_end.IsNull():
         return None
     p_start = BRep_Tool.Pnt(v_start)
     p_end = BRep_Tool.Pnt(v_end)
-    components = {
+    return {
         "X": abs(p_end.X() - p_start.X()),
         "Y": abs(p_end.Y() - p_start.Y()),
         "Z": abs(p_end.Z() - p_start.Z()),
     }
-    axis = max(components, key=components.get)
-    if components[axis] <= precision.Confusion():
-        return None
-    return axis
 
 
 def _planar_face_normal(face: TopoDS_Face) -> Optional[gp_Dir]:
@@ -252,6 +282,13 @@ def _edge_length(edge: TopoDS_Edge) -> float:
     return math.sqrt(dx * dx + dy * dy + dz * dz)
 
 
+def _edge_axis_span(edge: TopoDS_Edge, axis_name: str) -> float:
+    components = _edge_axis_components(edge)
+    if components is None:
+        return 0.0
+    return components.get(axis_name, 0.0)
+
+
 def _is_shortest_candidate_at_vertex(
     vertex: TopoDS_Vertex,
     current_edge: TopoDS_Edge,
@@ -260,7 +297,7 @@ def _is_shortest_candidate_at_vertex(
     edge_face_map: TopTools_IndexedDataMapOfShapeListOfShape,
     centroid,
 ) -> bool:
-    current_length = _edge_length(current_edge)
+    current_length = _edge_axis_span(current_edge, axis_name)
     if current_length <= precision.Confusion():
         return False
 
@@ -271,7 +308,7 @@ def _is_shortest_candidate_at_vertex(
         if other_axis is None or other_axis == axis_name:
             continue
         if _is_sharp_internal_wall_edge(edge, other_axis, edge_face_map, centroid):
-            if _edge_length(edge) + 1e-3 < current_length:
+            if _edge_axis_span(edge, other_axis) + 1e-3 < current_length:
                 return False
     return True
 
@@ -286,6 +323,7 @@ def evaluate_missing_internal_relief(shape: TopoDS_Shape, cfg: Config) -> RuleRe
     vertex_edge_map = _vertex_edge_map(shape)
     axis_failures: Dict[str, int] = {"X": 0, "Y": 0, "Z": 0}
     seen_edges: set[Tuple[str, float, float, float]] = set()
+    feature_insight_rows: List[Tuple[float, FeatureInsight]] = []
     axes_with_accessible_floors = {
         axis_name for axis_name in ("X", "Y", "Z") if _has_accessible_internal_floor(shape, axis_name, centroid)
     }
@@ -347,8 +385,6 @@ def evaluate_missing_internal_relief(shape: TopoDS_Shape, cfg: Config) -> RuleRe
             if not _is_on_outer_silhouette(midpoint, axis_name, bounds):
                 is_missing_relief = True
         elif (
-            any(internal_flags)
-            and
             axis_name in axes_with_accessible_floors
             and ((a_has_floor and b_is_open) or (b_has_floor and a_is_open))
             and not _is_on_outer_silhouette(midpoint, axis_name, bounds)
@@ -367,6 +403,19 @@ def evaluate_missing_internal_relief(shape: TopoDS_Shape, cfg: Config) -> RuleRe
             continue
         seen_edges.add(key)
         axis_failures[axis_name] += 1
+        axis_span = _edge_axis_span(edge, axis_name)
+        end_condition = "blind floor transition" if (a_has_floor or b_has_floor) else "open side-corner"
+        feature_insight_rows.append(
+            (
+                axis_span,
+                FeatureInsight(
+                    summary=(
+                        f"Sharp internal wall-wall corner spanning about {format_mm(axis_span)} along {axis_name} "
+                        f"with no tool relief at the {end_condition}."
+                    )
+                ),
+            )
+        )
 
     failed = sum(axis_failures.values())
     axis_breakdown = {axis_name: (count, 0, count) for axis_name, count in axis_failures.items()}
@@ -383,6 +432,7 @@ def evaluate_missing_internal_relief(shape: TopoDS_Shape, cfg: Config) -> RuleRe
             failed_features=0,
             axis_breakdown=axis_breakdown,
             rule_multiplier=rule_mult,
+            feature_insights=[],
         )
 
     rule_mult = rule_multiplier_from_fail_fraction(detected_features=failed, failed_features=failed)
@@ -399,4 +449,5 @@ def evaluate_missing_internal_relief(shape: TopoDS_Shape, cfg: Config) -> RuleRe
         failed_features=failed,
         axis_breakdown=axis_breakdown,
         rule_multiplier=rule_mult,
+        feature_insights=[insight for _score, insight in sorted(feature_insight_rows, key=lambda row: row[0], reverse=True)],
     )

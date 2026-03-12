@@ -22,6 +22,12 @@ from OCC.Core.TopTools import TopTools_IndexedDataMapOfShapeListOfShape, TopTool
 from OCC.Core.gp import gp_Dir, gp_Pnt
 
 
+def shape_bounds(shape: TopoDS_Shape) -> Tuple[float, float, float, float, float, float]:
+    box = Bnd_Box()
+    brepbndlib.Add(shape, box)
+    return box.Get()
+
+
 def read_step(path: str) -> TopoDS_Shape:
     reader = STEPControl_Reader()
     status = reader.ReadFile(path)
@@ -37,9 +43,7 @@ def read_step(path: str) -> TopoDS_Shape:
 
 
 def shape_bbox(shape: TopoDS_Shape) -> Tuple[float, float, float]:
-    box = Bnd_Box()
-    brepbndlib.Add(shape, box)
-    xmin, ymin, zmin, xmax, ymax, zmax = box.Get()
+    xmin, ymin, zmin, xmax, ymax, zmax = shape_bounds(shape)
     return max(0.0, xmax - xmin), max(0.0, ymax - ymin), max(0.0, zmax - zmin)
 
 

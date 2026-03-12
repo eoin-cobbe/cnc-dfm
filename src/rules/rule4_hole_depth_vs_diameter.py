@@ -10,6 +10,7 @@ from OCC.Core.TopExp import TopExp_Explorer
 from OCC.Core.TopoDS import TopoDS_Face, TopoDS_Shape, topods
 from OCC.Core.gp import gp_Dir
 
+from dfm_feature_descriptions import format_mm, format_ratio, nearest_axis_side
 from dfm_geometry import (
     collect_faces,
     face_midpoint_and_normal,
@@ -17,8 +18,9 @@ from dfm_geometry import (
     get_edge_face_map,
     is_parallel,
     offset_is_outside,
+    shape_bounds,
 )
-from dfm_models import Config, RuleResult
+from dfm_models import Config, FeatureInsight, RuleResult
 from dfm_scoring import rule_multiplier_from_threshold
 
 
@@ -114,9 +116,11 @@ def _is_hole_like_internal_cylinder(shape: TopoDS_Shape, edge_face_map, face: To
 def evaluate_hole_depth_vs_diameter(shape: TopoDS_Shape, cfg: Config) -> RuleResult:
     faces = collect_faces(shape)
     edge_face_map = get_edge_face_map(shape)
+    bounds = shape_bounds(shape)
     ratios: List[float] = []
     seen: Set[Tuple[float, float, float, float, float]] = set()
     axis_ratios = {"X": [], "Y": [], "Z": []}
+    feature_insight_rows: List[Tuple[float, FeatureInsight]] = []
 
     for face in faces:
         cyl = cylinder_face_depth_and_diameter(face)
@@ -149,6 +153,19 @@ def evaluate_hole_depth_vs_diameter(shape: TopoDS_Shape, cfg: Config) -> RuleRes
         }
         dominant_axis = max(axis_values, key=axis_values.get)
         axis_ratios[dominant_axis].append(ratio)
+        if ratio > cfg.max_hole_depth_to_diameter:
+            side = nearest_axis_side(c_mid, bounds, dominant_axis)
+            feature_insight_rows.append(
+                (
+                    ratio,
+                    FeatureInsight(
+                        summary=(
+                            f"Hole about {format_mm(depth)} deep and {format_mm(diameter)} in diameter entering from "
+                            f"the {side} side (depth/diameter {format_ratio(ratio)})."
+                        )
+                    ),
+                )
+            )
 
     axis_breakdown = {}
     for axis in ("X", "Y", "Z"):
@@ -178,6 +195,7 @@ def evaluate_hole_depth_vs_diameter(shape: TopoDS_Shape, cfg: Config) -> RuleRes
             threshold=cfg.max_hole_depth_to_diameter,
             threshold_kind="max",
             rule_multiplier=rule_mult,
+            feature_insights=[],
         )
 
     worst = max(ratios)
@@ -207,4 +225,5 @@ def evaluate_hole_depth_vs_diameter(shape: TopoDS_Shape, cfg: Config) -> RuleRes
         threshold=cfg.max_hole_depth_to_diameter,
         threshold_kind="max",
         rule_multiplier=rule_mult,
+        feature_insights=[insight for _score, insight in sorted(feature_insight_rows, key=lambda row: row[0], reverse=True)],
     )

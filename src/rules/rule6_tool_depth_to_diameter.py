@@ -5,7 +5,9 @@ from typing import Dict, Tuple
 from OCC.Core.Precision import precision
 from OCC.Core.TopoDS import TopoDS_Shape
 
-from dfm_models import Config, RuleResult
+from dfm_feature_descriptions import average_point, format_mm, format_ratio, nearest_axis_side
+from dfm_geometry import shape_bounds
+from dfm_models import Config, FeatureInsight, RuleResult
 from dfm_scoring import rule_multiplier_from_threshold
 from .rule1_internal_corner_radius import detect_internal_corner_features
 from .rule2_deep_pocket_ratio import _group_corner_features_by_depth, _split_depth_layer_into_pockets
@@ -15,6 +17,7 @@ R6_EDGE_TO_TOOL_RADIUS_FACTOR = 1.3
 
 def evaluate_tool_depth_to_diameter(shape: TopoDS_Shape, cfg: Config) -> RuleResult:
     features_by_axis = detect_internal_corner_features(shape)
+    bounds = shape_bounds(shape)
     all_radii = [
         float(feature["radius"])
         for axis_features in features_by_axis.values()
@@ -31,6 +34,7 @@ def evaluate_tool_depth_to_diameter(shape: TopoDS_Shape, cfg: Config) -> RuleRes
     offenders = 0
     worst_ratio = 0.0
     ratios = []
+    feature_insight_rows = []
 
     for axis_name, axis_features in features_by_axis.items():
         layers = _group_corner_features_by_depth(axis_features, tol_mm=0.5)
@@ -54,6 +58,22 @@ def evaluate_tool_depth_to_diameter(shape: TopoDS_Shape, cfg: Config) -> RuleRes
                 worst_ratio = max(worst_ratio, ratio)
                 if ratio > cfg.max_tool_depth_to_diameter_ratio:
                     axis_offenders += 1
+                    side = nearest_axis_side(
+                        average_point(feature["midpoint"] for feature in pocket_features),
+                        bounds,
+                        axis_name,
+                    )
+                    feature_insight_rows.append(
+                        (
+                            ratio,
+                            FeatureInsight(
+                                summary=(
+                                    f"Pocket about {format_mm(depth)} deep on the {side} side would force an inferred "
+                                    f"{format_mm(inferred_tool_diameter)} cutter (depth/tool {format_ratio(ratio)})."
+                                )
+                            ),
+                        )
+                    )
 
         axis_pass = max(axis_detected - axis_offenders, 0)
         axis_breakdown[axis_name] = (axis_detected, axis_pass, axis_offenders)
@@ -94,4 +114,5 @@ def evaluate_tool_depth_to_diameter(shape: TopoDS_Shape, cfg: Config) -> RuleRes
         threshold=cfg.max_tool_depth_to_diameter_ratio,
         threshold_kind="max",
         rule_multiplier=rule_mult,
+        feature_insights=[insight for _score, insight in sorted(feature_insight_rows, key=lambda row: row[0], reverse=True)],
     )

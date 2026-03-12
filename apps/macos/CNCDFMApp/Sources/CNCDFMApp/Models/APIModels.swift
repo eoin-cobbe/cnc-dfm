@@ -152,13 +152,27 @@ struct AnalysisResponse: Decodable {
     let processData: PartProcessDataPayload
     let rules: [RulePayload]
     let summary: AnalysisSummaryPayload
+    let recommendations: [RecommendationPayload]
 
     enum CodingKeys: String, CodingKey {
         case filePath = "file_path"
         case processData = "process_data"
         case rules
         case summary
+        case recommendations
     }
+}
+
+struct RecommendationPayload: Decodable, Identifiable {
+    let kind: String
+    let priority: Int
+    let title: String
+    let summary: String
+    let impact: String
+    let actions: [String]
+    let source: String
+
+    var id: String { "\(kind)-\(source)-\(title)" }
 }
 
 struct AnalysisSummaryPayload: Decodable {

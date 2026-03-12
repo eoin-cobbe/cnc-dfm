@@ -3,9 +3,10 @@ from __future__ import annotations
 import os
 import re
 import shutil
+from collections import OrderedDict
 from typing import List
 
-from dfm_models import PartProcessData, RuleResult
+from dfm_models import PartProcessData, Recommendation, RuleResult
 
 
 class Ansi:
@@ -43,13 +44,13 @@ def icon(passed: bool) -> str:
 
 def print_block_logo() -> None:
     lines = [
-        " ######  ##    ##  ######          ######   ######## ##     ## ",
+        " ######  ##    ##  ######         #######   ######## ##     ## ",
         "##    ## ###   ## ##    ##        ##    ##  ##       ###   ### ",
         "##       ####  ## ##              ##    ##  ##       #### #### ",
         "##       ## ## ## ##              ##    ##  ######   ## ### ## ",
         "##       ##  #### ##              ##    ##  ##       ##  #  ## ",
         "##    ## ##   ### ##    ##        ##    ##  ##       ##     ## ",
-        " ######  ##    ##  ######          ######   ##       ##     ## ",
+        " ######  ##    ##  ######         #######   ##       ##     ## ",
     ]
     for line in lines:
         print(paint(line, Ansi.BOLD, Ansi.CYAN))
@@ -191,7 +192,44 @@ def _build_rule_bar(avg: float, threshold: float, threshold_kind: str, width: in
     return f"[{core}] max-ok<=T"
 
 
-def print_report(results: List[RuleResult], file_path: str) -> None:
+def _recommendation_tag(kind: str) -> str:
+    if kind == "blocker":
+        return paint("BLOCKER", Ansi.BOLD, Ansi.RED)
+    if kind == "cost":
+        return paint("COST", Ansi.BOLD, Ansi.YELLOW)
+    return paint("INFO", Ansi.BOLD, Ansi.GREEN)
+
+
+def print_recommendations(recommendations: List[Recommendation]) -> None:
+    print(f"{paint('RECOMMENDATIONS', Ansi.BOLD, Ansi.BLUE)}")
+    if not recommendations:
+        print("  None")
+        print("")
+        return
+
+    for idx, recommendation in enumerate(recommendations, start=1):
+        print(
+            f"  {idx}. {_recommendation_tag(recommendation.kind)}  "
+            f"{paint(recommendation.title, Ansi.BOLD)}  "
+            f"{paint(f'P{recommendation.priority}', Ansi.DIM)}"
+        )
+        print(f"     {recommendation.summary}")
+        if recommendation.feature_insights:
+            print(f"     {paint('WHERE', Ansi.BOLD, Ansi.CYAN)}")
+            grouped_insights: "OrderedDict[str, int]" = OrderedDict()
+            for insight in recommendation.feature_insights:
+                grouped_insights[insight.summary] = grouped_insights.get(insight.summary, 0) + 1
+            for summary, count in grouped_insights.items():
+                prefix = f"x{count} " if count > 1 else ""
+                print(f"       - {prefix}{summary}")
+        print(f"     {paint('IMPACT', Ansi.BOLD, Ansi.YELLOW)}  {recommendation.impact}")
+        for action in recommendation.actions:
+            print(f"     - {action}")
+        print(f"     {paint('SOURCE', Ansi.DIM)}  {recommendation.source}")
+        print("")
+
+
+def print_report(results: List[RuleResult], file_path: str, recommendations: List[Recommendation] | None = None) -> None:
     print(f"{paint('FILE', Ansi.BOLD, Ansi.BLUE)}  {file_path}")
     print(paint("-" * 72, Ansi.GRAY))
 
@@ -250,6 +288,9 @@ def print_report(results: List[RuleResult], file_path: str) -> None:
         print("")
 
     print(paint("-" * 72, Ansi.GRAY))
+    if recommendations is not None:
+        print_recommendations(recommendations)
+        print(paint("-" * 72, Ansi.GRAY))
     passed_count = sum(1 for r in results if r.passed)
     overall_pass = passed_count == len(results)
     print(

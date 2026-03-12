@@ -13,16 +13,18 @@ from OCC.Core.TopAbs import TopAbs_IN
 from OCC.Core.TopoDS import TopoDS_Face, TopoDS_Shape
 from OCC.Core.gp import gp_Dir, gp_Pnt
 
+from dfm_feature_descriptions import format_mm, nearest_axis_side
 from dfm_geometry import (
     collect_faces,
     face_area,
     face_midpoint_and_normal,
     is_internal_face,
+    shape_bounds,
     shape_bbox,
     shape_centroid,
     signed_distance_between_planes,
 )
-from dfm_models import Config, RuleResult
+from dfm_models import Config, FeatureInsight, RuleResult
 from dfm_scoring import rule_multiplier_from_threshold
 
 MIN_AXIS_FACE_AREA_FRACTION = 0.05
@@ -81,9 +83,33 @@ def _wall_probe_point(
     return gp_Pnt(x, y, z)
 
 
-def _opposing_planar_wall_thicknesses_by_axis(
+def _wall_overlap_spans(face_i: TopoDS_Face, face_j: TopoDS_Face, normal: gp_Dir) -> Optional[Tuple[float, float]]:
+    xi1, yi1, zi1, xa1, ya1, za1 = _face_bbox(face_i)
+    xi2, yi2, zi2, xa2, ya2, za2 = _face_bbox(face_j)
+    nx, ny, nz = abs(normal.X()), abs(normal.Y()), abs(normal.Z())
+
+    if nx >= ny and nx >= nz:
+        oy = _overlap_interval(yi1, ya1, yi2, ya2)
+        oz = _overlap_interval(zi1, za1, zi2, za2)
+        if oy is None or oz is None:
+            return None
+        return max(0.0, oy[1] - oy[0]), max(0.0, oz[1] - oz[0])
+    if ny >= nx and ny >= nz:
+        ox = _overlap_interval(xi1, xa1, xi2, xa2)
+        oz = _overlap_interval(zi1, za1, zi2, za2)
+        if ox is None or oz is None:
+            return None
+        return max(0.0, ox[1] - ox[0]), max(0.0, oz[1] - oz[0])
+    ox = _overlap_interval(xi1, xa1, xi2, xa2)
+    oy = _overlap_interval(yi1, ya1, yi2, ya2)
+    if ox is None or oy is None:
+        return None
+    return max(0.0, ox[1] - ox[0]), max(0.0, oy[1] - oy[0])
+
+
+def _opposing_planar_wall_features_by_axis(
     shape: TopoDS_Shape, max_angle_deg: float = 10.0
-) -> Dict[str, List[float]]:
+) -> Dict[str, List[dict]]:
     faces = collect_faces(shape)
     centroid = shape_centroid(shape)
     dx, dy, dz = shape_bbox(shape)
@@ -103,7 +129,7 @@ def _opposing_planar_wall_thicknesses_by_axis(
         point, normal = data
         planar.append((face, point, normal, is_internal_face(face, centroid), face_area(face)))
 
-    thicknesses_by_axis: Dict[str, List[float]] = {"X": [], "Y": [], "Z": []}
+    features_by_axis: Dict[str, List[dict]] = {"X": [], "Y": [], "Z": []}
     min_axis_dot = math.cos(math.radians(max_angle_deg))
     axis_dirs = [
         ("X", gp_Dir(1.0, 0.0, 0.0)),
@@ -144,21 +170,54 @@ def _opposing_planar_wall_thicknesses_by_axis(
                 classifier = BRepClass3d_SolidClassifier(shape, probe, precision.Confusion())
                 if classifier.State() != TopAbs_IN:
                     continue
-                thicknesses_by_axis[axis_name].append(thickness)
+                spans = _wall_overlap_spans(face_i, face_j, normal_i)
+                span_a, span_b = spans if spans is not None else (0.0, 0.0)
+                features_by_axis[axis_name].append(
+                    {
+                        "thickness": thickness,
+                        "probe": probe,
+                        "span_a": span_a,
+                        "span_b": span_b,
+                    }
+                )
 
-    return thicknesses_by_axis
+    return features_by_axis
 
 
 def evaluate_thin_walls(shape: TopoDS_Shape, cfg: Config) -> RuleResult:
-    thicknesses_by_axis = _opposing_planar_wall_thicknesses_by_axis(shape)
-    thicknesses = [t for axis in ("X", "Y", "Z") for t in thicknesses_by_axis[axis]]
+    wall_features_by_axis = _opposing_planar_wall_features_by_axis(shape)
+    bounds = shape_bounds(shape)
+    thicknesses = [
+        float(feature["thickness"])
+        for axis in ("X", "Y", "Z")
+        for feature in wall_features_by_axis[axis]
+    ]
     axis_breakdown: Dict[str, Tuple[int, int, int]] = {}
+    feature_insight_rows: List[Tuple[float, FeatureInsight]] = []
     for axis in ("X", "Y", "Z"):
-        axis_vals = thicknesses_by_axis[axis]
+        axis_vals = wall_features_by_axis[axis]
         axis_detected = len(axis_vals)
-        axis_pass = sum(1 for t in axis_vals if t >= cfg.min_wall_thickness_mm)
+        axis_pass = sum(1 for feature in axis_vals if float(feature["thickness"]) >= cfg.min_wall_thickness_mm)
         axis_fail = axis_detected - axis_pass
         axis_breakdown[axis] = (axis_detected, axis_pass, axis_fail)
+        for feature in axis_vals:
+            thickness = float(feature["thickness"])
+            if thickness >= cfg.min_wall_thickness_mm:
+                continue
+            side = nearest_axis_side(feature["probe"], bounds, axis)
+            span_major = max(float(feature["span_a"]), float(feature["span_b"]))
+            span_minor = min(float(feature["span_a"]), float(feature["span_b"]))
+            feature_insight_rows.append(
+                (
+                    thickness,
+                    FeatureInsight(
+                        summary=(
+                            f"{format_mm(thickness)} wall on the {side} side spanning about {format_mm(span_major)} x "
+                            f"{format_mm(span_minor)}."
+                        )
+                    ),
+                )
+            )
 
     if not thicknesses:
         return RuleResult(
@@ -175,6 +234,7 @@ def evaluate_thin_walls(shape: TopoDS_Shape, cfg: Config) -> RuleResult:
             threshold=cfg.min_wall_thickness_mm,
             threshold_kind="min",
             rule_multiplier=1.0,
+            feature_insights=[],
         )
 
     thinnest = min(thicknesses)
@@ -206,4 +266,5 @@ def evaluate_thin_walls(shape: TopoDS_Shape, cfg: Config) -> RuleResult:
         threshold=cfg.min_wall_thickness_mm,
         threshold_kind="min",
         rule_multiplier=rule_mult,
+        feature_insights=[insight for _score, insight in sorted(feature_insight_rows, key=lambda row: row[0])],
     )

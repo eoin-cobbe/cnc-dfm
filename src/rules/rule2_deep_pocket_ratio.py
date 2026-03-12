@@ -11,13 +11,15 @@ from OCC.Core.TopoDS import topods
 from OCC.Core.TopoDS import TopoDS_Face, TopoDS_Shape
 from OCC.Core.gp import gp_Dir
 
+from dfm_feature_descriptions import average_point, format_mm, format_ratio, nearest_axis_side
 from dfm_geometry import (
     face_midpoint_and_normal,
     is_wall_face_for_axis,
+    shape_bounds,
     shape_bbox,
     signed_distance_between_planes,
 )
-from dfm_models import Config, RuleResult
+from dfm_models import Config, FeatureInsight, RuleResult
 from dfm_scoring import rule_multiplier_from_threshold
 from .rule1_internal_corner_radius import detect_internal_corner_features
 
@@ -298,11 +300,13 @@ def _opening_from_pocket_features(pocket_features: List[dict], axis_name: str) -
 
 def evaluate_deep_pocket_ratio(shape: TopoDS_Shape, cfg: Config) -> RuleResult:
     features_by_axis = detect_internal_corner_features(shape)
+    bounds = shape_bounds(shape)
     axis_breakdown: Dict[str, Tuple[int, int, int]] = {}
     detected = 0
     offenders = 0
     worst_ratio = 0.0
     ratios: List[float] = []
+    feature_insight_rows: List[Tuple[float, FeatureInsight]] = []
 
     for axis_name, axis_features in features_by_axis.items():
         layers = _group_corner_features_by_depth(axis_features, tol_mm=0.5)
@@ -327,6 +331,22 @@ def evaluate_deep_pocket_ratio(shape: TopoDS_Shape, cfg: Config) -> RuleResult:
                 worst_ratio = max(worst_ratio, ratio)
                 if ratio > cfg.max_pocket_depth_ratio:
                     axis_offenders += 1
+                    side = nearest_axis_side(
+                        average_point(feature["midpoint"] for feature in pocket_features),
+                        bounds,
+                        axis_name,
+                    )
+                    feature_insight_rows.append(
+                        (
+                            ratio,
+                            FeatureInsight(
+                                summary=(
+                                    f"Pocket about {format_mm(depth)} deep with a {format_mm(opening)} opening on the "
+                                    f"{side} side (depth/opening {format_ratio(ratio)})."
+                                )
+                            ),
+                        )
+                    )
 
         axis_pass = max(axis_detected - axis_offenders, 0)
         axis_breakdown[axis_name] = (axis_detected, axis_pass, axis_offenders)
@@ -365,4 +385,5 @@ def evaluate_deep_pocket_ratio(shape: TopoDS_Shape, cfg: Config) -> RuleResult:
         threshold=cfg.max_pocket_depth_ratio,
         threshold_kind="max",
         rule_multiplier=rule_mult,
+        feature_insights=[insight for _score, insight in sorted(feature_insight_rows, key=lambda row: row[0], reverse=True)],
     )

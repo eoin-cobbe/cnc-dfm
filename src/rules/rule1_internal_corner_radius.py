@@ -11,14 +11,16 @@ from OCC.Core.TopExp import TopExp_Explorer
 from OCC.Core.TopoDS import TopoDS_Face, TopoDS_Shape, topods
 from OCC.Core.gp import gp_Dir
 
+from dfm_feature_descriptions import format_mm, nearest_axis_side
 from dfm_geometry import (
     face_midpoint_and_normal,
     faces_for_edge,
     get_edge_face_map,
     is_parallel,
     offset_is_outside,
+    shape_bounds,
 )
-from dfm_models import Config, RuleResult
+from dfm_models import Config, FeatureInsight, RuleResult
 from dfm_scoring import rule_multiplier_from_threshold
 
 R1_ABSOLUTE_PASS_RADIUS_MM = 0.8
@@ -230,22 +232,43 @@ def detect_internal_corner_features(shape: TopoDS_Shape) -> Dict[str, List[dict]
 
 
 def evaluate_internal_corner_radius(shape: TopoDS_Shape, cfg: Config) -> RuleResult:
-    radii_by_axis = detect_internal_corner_radii(shape)
+    features_by_axis = detect_internal_corner_features(shape)
     feature_radii: List[float] = []
     recommended_min_radius_mm = cfg.min_internal_corner_radius_mm
+    bounds = shape_bounds(shape)
     axis_breakdown: Dict[str, Tuple[int, int, int]] = {
         "X": (0, 0, 0),
         "Y": (0, 0, 0),
         "Z": (0, 0, 0),
     }
+    feature_insight_rows: List[Tuple[float, FeatureInsight]] = []
 
-    for axis_name, axis_radii in radii_by_axis.items():
+    for axis_name, axis_features in features_by_axis.items():
+        axis_radii = [float(feature["radius"]) for feature in axis_features]
         axis_detected = len(axis_radii)
         axis_pass = sum(1 for r in axis_radii if r >= R1_ABSOLUTE_PASS_RADIUS_MM)
         axis_fail = axis_detected - axis_pass
 
         feature_radii.extend(axis_radii)
         axis_breakdown[axis_name] = (axis_detected, axis_pass, axis_fail)
+
+        for feature in axis_features:
+            radius = float(feature["radius"])
+            if radius >= recommended_min_radius_mm:
+                continue
+            pocket_depth = float(feature["cylindrical_depth"])
+            side = nearest_axis_side(feature["midpoint"], bounds, axis_name)
+            feature_insight_rows.append(
+                (
+                    radius,
+                    FeatureInsight(
+                        summary=(
+                            f"{format_mm(radius)} inside corner radius in a pocket about {format_mm(pocket_depth)} deep "
+                            f"opening from the {side} side."
+                        )
+                    )
+                )
+            )
 
     if not feature_radii:
         return RuleResult(
@@ -263,6 +286,7 @@ def evaluate_internal_corner_radius(shape: TopoDS_Shape, cfg: Config) -> RuleRes
             threshold=R1_ABSOLUTE_PASS_RADIUS_MM,
             threshold_kind="min",
             rule_multiplier=1.0,
+            feature_insights=[],
         )
 
     min_radius = min(feature_radii)
@@ -304,4 +328,5 @@ def evaluate_internal_corner_radius(shape: TopoDS_Shape, cfg: Config) -> RuleRes
         threshold=R1_ABSOLUTE_PASS_RADIUS_MM,
         threshold_kind="min",
         rule_multiplier=rule_mult,
+        feature_insights=[insight for _score, insight in sorted(feature_insight_rows, key=lambda row: row[0])],
     )

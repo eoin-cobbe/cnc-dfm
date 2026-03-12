@@ -1,7 +1,12 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from typing import Dict, List, Optional, Tuple
+
+
+@dataclass
+class FeatureInsight:
+    summary: str
 
 
 @dataclass
@@ -21,6 +26,7 @@ class RuleResult:
     threshold: Optional[float] = None
     threshold_kind: Optional[str] = None  # "max" or "min"
     rule_multiplier: float = 1.0
+    feature_insights: List[FeatureInsight] = field(default_factory=list)
 
 
 @dataclass
@@ -113,8 +119,21 @@ class AnalysisSummary:
 
 
 @dataclass
+class Recommendation:
+    kind: str
+    priority: int
+    title: str
+    summary: str
+    impact: str
+    actions: List[str]
+    source: str
+    feature_insights: List[FeatureInsight] = field(default_factory=list)
+
+
+@dataclass
 class AnalysisResult:
     file_path: str
     process_data: PartProcessData
     rules: List[RuleResult]
     summary: AnalysisSummary
+    recommendations: List[Recommendation]

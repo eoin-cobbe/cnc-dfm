@@ -11,7 +11,7 @@ from OCC.Core.TopoDS import TopoDS_Shape
 
 from dfm_geometry import read_step, shape_bbox, shape_surface_area_mm2, shape_volume_mm3
 from dfm_materials import get_material, material_keys
-from dfm_models import AnalysisResult, AnalysisSummary, Config, PartProcessData, RuleResult
+from dfm_models import AnalysisResult, AnalysisSummary, Config, FeatureInsight, PartProcessData, Recommendation, RuleResult
 from dfm_terminal import print_boot, print_part_process_data, print_report
 from rules.rule5_multiple_setup_faces import required_setup_directions
 from rules import (
@@ -45,6 +45,304 @@ def combined_rule_multiplier(results: List[RuleResult]) -> float:
     for result in results:
         mult *= max(1.0, result.rule_multiplier)
     return mult
+
+
+def _format_mm(value: float) -> str:
+    return f"{value:.2f} mm"
+
+
+def _format_ratio(value: float) -> str:
+    return f"{value:.2f}"
+
+
+def _priority_from_multiplier(multiplier: float, floor: int = 50) -> int:
+    return max(floor, int(round((max(multiplier, 1.0) - 1.0) * 100.0)) + floor)
+
+
+def build_recommendations(
+    rules: List[RuleResult],
+    process_data: PartProcessData,
+    cfg: Config,
+) -> List[Recommendation]:
+    recommendations: List[Recommendation] = []
+    has_setup_direction_recommendation = False
+
+    def add(
+        kind: str,
+        priority: int,
+        title: str,
+        summary: str,
+        impact: str,
+        actions: List[str],
+        source: str,
+        feature_insights: List[FeatureInsight] | None = None,
+    ) -> None:
+        recommendations.append(
+            Recommendation(
+                kind=kind,
+                priority=priority,
+                title=title,
+                summary=summary,
+                impact=impact,
+                actions=actions,
+                source=source,
+                feature_insights=list(feature_insights or []),
+            )
+        )
+
+    for rule in rules:
+        if rule.passed:
+            continue
+
+        if "Rule 0" in rule.name:
+            add(
+                kind="blocker",
+                priority=140,
+                title="Add internal relief to sharp closed corners",
+                summary=(
+                    f"{rule.failed_features} internal corner feature(s) appear unmachinable with a standard end mill "
+                    "because the tool has nowhere to clear in a sharp wall-wall corner."
+                ),
+                impact="This is a manufacturability blocker. The part is likely not millable as drawn in those regions.",
+                actions=[
+                    "Add dog-bone or tear-drop relief where two internal walls meet.",
+                    "Open one side of the corner if the feature can break out to an edge.",
+                    "Replace perfectly sharp inside corners with a relief feature sized for the cutter.",
+                ],
+                source=rule.name,
+                feature_insights=rule.feature_insights,
+            )
+        elif "Rule 1" in rule.name:
+            add(
+                kind="blocker",
+                priority=130,
+                title="Increase internal corner radii",
+                summary=(
+                    f"Minimum detected radius is {_format_mm(rule.minimum_detected or 0.0)}. "
+                    f"Absolute pass floor is {_format_mm(rule.required_minimum or 0.8)} and the design target is "
+                    f"{_format_mm(cfg.min_internal_corner_radius_mm)}."
+                ),
+                impact=(
+                    f"Small internal radii force very small cutters and drive up time; current rule penalty is "
+                    f"{rule.rule_multiplier:.2f}x."
+                ),
+                actions=[
+                    f"Increase internal corner radii to at least {_format_mm(cfg.min_internal_corner_radius_mm)} where function allows.",
+                    "Standardize on one larger corner radius across pockets and slots.",
+                    "If a sharp mating corner is required, add relief rather than holding a tiny radius everywhere.",
+                ],
+                source=rule.name,
+                feature_insights=rule.feature_insights,
+            )
+        elif "Rule 2" in rule.name:
+            add(
+                kind="blocker",
+                priority=125,
+                title="Reduce pocket depth relative to opening",
+                summary=(
+                    f"Average pocket depth/opening ratio is {_format_ratio(rule.average_detected or 0.0)} against a "
+                    f"limit of {_format_ratio(cfg.max_pocket_depth_ratio)}."
+                ),
+                impact="Deep narrow pockets are slower, less rigid to machine, and often require smaller tools and lighter cuts.",
+                actions=[
+                    "Make the pocket shallower if that does not affect function.",
+                    "Widen the pocket opening so the depth/opening ratio drops.",
+                    "Split one deep pocket into stepped levels or open it from another side.",
+                ],
+                source=rule.name,
+                feature_insights=rule.feature_insights,
+            )
+        elif "Rule 3" in rule.name:
+            add(
+                kind="blocker",
+                priority=120,
+                title="Thicken thin walls",
+                summary=(
+                    f"Minimum detected wall is {_format_mm(rule.minimum_detected or 0.0)} and the target minimum is "
+                    f"{_format_mm(cfg.min_wall_thickness_mm)}."
+                ),
+                impact="Thin walls deflect during milling, reduce accuracy, and usually require slower finishing cuts.",
+                actions=[
+                    f"Increase wall thickness to at least {_format_mm(cfg.min_wall_thickness_mm)}.",
+                    "Reduce unsupported wall height or break tall walls into shorter steps.",
+                    "Where stiffness matters, add stock outside the wall instead of relying on a thin unsupported section.",
+                ],
+                source=rule.name,
+                feature_insights=rule.feature_insights,
+            )
+        elif "Rule 4" in rule.name:
+            add(
+                kind="blocker",
+                priority=118,
+                title="Shorten or enlarge deep holes",
+                summary=(
+                    f"Average hole depth/diameter ratio is {_format_ratio(rule.average_detected or 0.0)} with a "
+                    f"limit of {_format_ratio(cfg.max_hole_depth_to_diameter)}."
+                ),
+                impact="Deep small holes are harder to drill, clear chips from, and hold tolerance in.",
+                actions=[
+                    "Convert blind holes to through holes where possible.",
+                    "Shorten the hole depth or drill from both sides.",
+                    "Increase the hole diameter if the fastener or dowel choice allows it.",
+                ],
+                source=rule.name,
+                feature_insights=rule.feature_insights,
+            )
+        elif "Rule 5" in rule.name:
+            has_setup_direction_recommendation = True
+            machine_note = ""
+            if process_data.machine_type == "5-axis":
+                machine_note = (
+                    f" The current setup pattern already pushes the estimate onto a {process_data.machine_type} machine "
+                    f"at {process_data.machine_hourly_rate_eur:.0f} EUR/hr."
+                )
+            add(
+                kind="cost",
+                priority=110,
+                title="Reduce the number of setup directions",
+                summary=(
+                    f"The part currently needs about {int(rule.average_detected or 0)} setup direction(s), above the "
+                    f"target of {cfg.max_setups}."
+                ),
+                impact=(
+                    "Extra setups add fixturing time, stack-up error, and can push the part onto a 5-axis process."
+                    f"{machine_note}"
+                ),
+                actions=[
+                    "Reorient side features so more of them can be machined from the same top or flip setup.",
+                    "Align holes, pockets, and relief features to a common datum direction.",
+                    "Avoid isolated side details that require a dedicated access direction.",
+                ],
+                source=rule.name,
+                feature_insights=rule.feature_insights,
+            )
+        elif "Rule 6" in rule.name:
+            add(
+                kind="cost",
+                priority=112,
+                title="Allow a larger cutter in deep pockets",
+                summary=(
+                    f"Average pocket depth/tool diameter ratio is {_format_ratio(rule.average_detected or 0.0)} with a "
+                    f"limit of {_format_ratio(cfg.max_tool_depth_to_diameter_ratio)}."
+                ),
+                impact="A small tool running deep into a pocket is slow, less rigid, and expensive to finish accurately.",
+                actions=[
+                    "Increase pocket corner radii so a larger end mill can be used.",
+                    "Reduce pocket depth or convert one deep cavity into multiple shallower levels.",
+                    "Open the pocket from another side if the design can tolerate it.",
+                ],
+                source=rule.name,
+                feature_insights=rule.feature_insights,
+            )
+
+    if process_data.machine_type == "5-axis" and not has_setup_direction_recommendation:
+        add(
+            kind="cost",
+            priority=115,
+            title="Rework geometry toward a 3-axis or flip-only process",
+            summary=(
+                f"The current access pattern selects a {process_data.machine_type} machine because the part needs "
+                f"{process_data.required_setup_directions}."
+            ),
+            impact=(
+                f"This pushes machining onto the higher-rate machine band of {process_data.machine_hourly_rate_eur:.0f} EUR/hr."
+            ),
+            actions=[
+                "Move angled or side-only features onto the top or bottom faces where possible.",
+                "Combine feature access directions so the part can be machined in one setup plus one flip.",
+                "Question whether every side feature is functionally necessary or can be simplified.",
+            ],
+            source="Process",
+        )
+
+    if process_data.surface_area_multiplier > 1.1:
+        add(
+            kind="cost",
+            priority=_priority_from_multiplier(process_data.surface_area_multiplier, floor=55),
+            title="Simplify high-surface-area geometry",
+            summary=(
+                f"Surface-driven time multiplier is {process_data.surface_area_multiplier:.2f}x, which suggests the part "
+                "has more toolpath length than a simpler shape in the same envelope."
+            ),
+            impact="More contoured surface area generally means longer finishing passes and more machine time.",
+            actions=[
+                "Remove non-functional scallops, decorative contours, and small surface undulations.",
+                "Use larger planar faces where the function does not require sculpted geometry.",
+                "Keep cosmetic geometry off milled surfaces unless it is critical.",
+            ],
+            source="Surface area",
+        )
+
+    if process_data.complexity_multiplier > 1.08:
+        add(
+            kind="cost",
+            priority=_priority_from_multiplier(process_data.complexity_multiplier, floor=50),
+            title="Reduce face count and fragmented geometry",
+            summary=(
+                f"Complexity multiplier is {process_data.complexity_multiplier:.2f}x from "
+                f"{process_data.surface_complexity_faces} detected faces."
+            ),
+            impact="Many small faces usually mean more toolpath transitions, more CAM overhead, and slower finishing.",
+            actions=[
+                "Merge tiny adjacent faces into cleaner continuous surfaces.",
+                "Standardize repeated details instead of using many slightly different local features.",
+                "Remove small steps or offsets that do not carry functional value.",
+            ],
+            source="Complexity",
+        )
+
+    if process_data.hole_count_multiplier > 1.08:
+        add(
+            kind="cost",
+            priority=_priority_from_multiplier(process_data.hole_count_multiplier, floor=48),
+            title="Reduce or standardize hole features",
+            summary=(
+                f"The part has {process_data.hole_count} detected hole feature(s), contributing a "
+                f"{process_data.hole_count_multiplier:.2f}x hole-count multiplier."
+            ),
+            impact="More holes mean more drilling cycles, tool changes, and positional operations.",
+            actions=[
+                "Remove non-critical holes or combine functions into fewer drilled features.",
+                "Use repeated standard diameters where possible.",
+                "Pattern holes consistently so the drilling cycle is simpler.",
+            ],
+            source="Hole count",
+        )
+
+    if process_data.radius_count_multiplier > 1.05:
+        add(
+            kind="cost",
+            priority=_priority_from_multiplier(process_data.radius_count_multiplier, floor=45),
+            title="Reduce internal corner feature count",
+            summary=(
+                f"The part has {process_data.radius_count} detected internal radiused corner feature(s), which drives a "
+                f"{process_data.radius_count_multiplier:.2f}x radius-count multiplier."
+            ),
+            impact="A large number of internal corner features increases time, especially if the radii imply smaller tools.",
+            actions=[
+                "Remove non-functional pockets, slots, or internal cutouts that add extra inside corners.",
+                "Merge adjacent recessed features where the function allows it.",
+                "Prefer fewer simpler internal features over many repeated corner transitions.",
+            ],
+            source="Radius count",
+        )
+
+    if not recommendations:
+        add(
+            kind="info",
+            priority=10,
+            title="Part looks manufacturable with the current rule set",
+            summary="No major manufacturability blockers or strong time drivers were detected in the current analysis.",
+            impact="The current geometry appears reasonable for CNC milling based on the implemented checks.",
+            actions=[
+                "Keep internal radii standardized if you add more pockets.",
+                "Avoid introducing extra setup directions as the design evolves.",
+            ],
+            source="Analysis",
+        )
+
+    recommendations.sort(key=lambda rec: (0 if rec.kind == "blocker" else 1, -rec.priority, rec.title))
+    return recommendations[:6]
 
 
 def build_config_from_args(args: argparse.Namespace) -> Config:
@@ -386,6 +684,7 @@ def analyze_step_file(step_file: str, cfg: Config, qty: int) -> AnalysisResult:
     )
     passed_rule_count = sum(1 for result in results if result.passed)
     failed_rule_count = len(results) - passed_rule_count
+    recommendations = build_recommendations(results, process_data, cfg)
     return AnalysisResult(
         file_path=step_file,
         process_data=process_data,
@@ -397,6 +696,7 @@ def analyze_step_file(step_file: str, cfg: Config, qty: int) -> AnalysisResult:
             failed_rule_count=failed_rule_count,
             rule_multiplier=rule_multiplier,
         ),
+        recommendations=recommendations,
     )
 
 
@@ -406,7 +706,7 @@ def main() -> int:
     print_boot(args.step_file)
     analysis = analyze_step_file(args.step_file, cfg, args.qty)
     print_part_process_data(analysis.process_data)
-    print_report(analysis.rules, args.step_file)
+    print_report(analysis.rules, args.step_file, analysis.recommendations)
     return 0
 
 
