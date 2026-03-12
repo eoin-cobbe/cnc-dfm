@@ -25,18 +25,18 @@ from rules import (
 )
 
 
-def run_all_rules(shape: TopoDS_Shape, cfg: Config) -> List[RuleResult]:
+def run_all_rules(shape: TopoDS_Shape, cfg: Config, step_file: str) -> List[RuleResult]:
     rule0 = evaluate_missing_internal_relief(shape, cfg)
     if not rule0.passed:
         return [rule0]
     return [
         rule0,
-        evaluate_internal_corner_radius(shape, cfg),
-        evaluate_deep_pocket_ratio(shape, cfg),
-        evaluate_thin_walls(shape, cfg),
-        evaluate_hole_depth_vs_diameter(shape, cfg),
-        evaluate_multiple_setup_faces(shape, cfg),
-        evaluate_tool_depth_to_diameter(shape, cfg),
+        evaluate_internal_corner_radius(shape, cfg, step_file=step_file),
+        evaluate_deep_pocket_ratio(shape, cfg, step_file=step_file),
+        evaluate_thin_walls(shape, cfg, step_file=step_file),
+        evaluate_hole_depth_vs_diameter(shape, cfg, step_file=step_file),
+        evaluate_multiple_setup_faces(shape, cfg, step_file=step_file),
+        evaluate_tool_depth_to_diameter(shape, cfg, step_file=step_file),
     ]
 
 
@@ -66,6 +66,9 @@ def build_recommendations(
 ) -> List[Recommendation]:
     recommendations: List[Recommendation] = []
     has_setup_direction_recommendation = False
+    all_hole_feature_insights: List[FeatureInsight] = []
+    all_radius_feature_insights: List[FeatureInsight] = []
+    setup_direction_feature_insights: List[FeatureInsight] = []
 
     def add(
         kind: str,
@@ -91,6 +94,13 @@ def build_recommendations(
         )
 
     for rule in rules:
+        if "Rule 4" in rule.name:
+            all_hole_feature_insights = list(rule.all_feature_insights or rule.feature_insights)
+        if "Rule 1" in rule.name:
+            all_radius_feature_insights = list(rule.all_feature_insights or rule.feature_insights)
+        if "Rule 5" in rule.name:
+            setup_direction_feature_insights = list(rule.all_feature_insights or rule.feature_insights)
+
         if rule.passed:
             continue
 
@@ -253,6 +263,7 @@ def build_recommendations(
                 "Question whether every side feature is functionally necessary or can be simplified.",
             ],
             source="Process",
+            feature_insights=setup_direction_feature_insights,
         )
 
     if process_data.surface_area_multiplier > 1.1:
@@ -307,6 +318,7 @@ def build_recommendations(
                 "Pattern holes consistently so the drilling cycle is simpler.",
             ],
             source="Hole count",
+            feature_insights=all_hole_feature_insights,
         )
 
     if process_data.radius_count_multiplier > 1.05:
@@ -325,6 +337,7 @@ def build_recommendations(
                 "Prefer fewer simpler internal features over many repeated corner transitions.",
             ],
             source="Radius count",
+            feature_insights=all_radius_feature_insights,
         )
 
     if not recommendations:
@@ -662,7 +675,7 @@ def compute_part_process_data(
 
 def analyze_step_file(step_file: str, cfg: Config, qty: int) -> AnalysisResult:
     shape = read_step(step_file)
-    results = run_all_rules(shape, cfg)
+    results = run_all_rules(shape, cfg, step_file)
     rule_multiplier = combined_rule_multiplier(results)
     hole_count = 0
     radius_count = 0

@@ -11,7 +11,7 @@ from OCC.Core.TopExp import TopExp_Explorer
 from OCC.Core.TopoDS import TopoDS_Face, TopoDS_Shape, topods
 from OCC.Core.gp import gp_Dir
 
-from dfm_feature_descriptions import format_mm, nearest_axis_side
+from dfm_feature_descriptions import feature_id, format_mm, nearest_axis_side, point3d
 from dfm_geometry import (
     face_midpoint_and_normal,
     faces_for_edge,
@@ -21,6 +21,7 @@ from dfm_geometry import (
     shape_bounds,
 )
 from dfm_models import Config, FeatureInsight, RuleResult
+from dfm_preview import export_feature_overlay_stl
 from dfm_scoring import rule_multiplier_from_threshold
 
 R1_ABSOLUTE_PASS_RADIUS_MM = 0.8
@@ -221,6 +222,7 @@ def detect_internal_corner_features(shape: TopoDS_Shape) -> Dict[str, List[dict]
                     "depth_along_axis": depth_along_axis,
                     "cylindrical_depth": cylindrical_depth,
                     "midpoint": c_mid,
+                    "radius_face": face,
                     "wall_faces": wall_faces,
                 }
             )
@@ -231,7 +233,7 @@ def detect_internal_corner_features(shape: TopoDS_Shape) -> Dict[str, List[dict]
     return features_by_axis
 
 
-def evaluate_internal_corner_radius(shape: TopoDS_Shape, cfg: Config) -> RuleResult:
+def evaluate_internal_corner_radius(shape: TopoDS_Shape, cfg: Config, step_file: str | None = None) -> RuleResult:
     features_by_axis = detect_internal_corner_features(shape)
     feature_radii: List[float] = []
     recommended_min_radius_mm = cfg.min_internal_corner_radius_mm
@@ -242,6 +244,7 @@ def evaluate_internal_corner_radius(shape: TopoDS_Shape, cfg: Config) -> RuleRes
         "Z": (0, 0, 0),
     }
     feature_insight_rows: List[Tuple[float, FeatureInsight]] = []
+    all_feature_insight_rows: List[Tuple[float, FeatureInsight]] = []
 
     for axis_name, axis_features in features_by_axis.items():
         axis_radii = [float(feature["radius"]) for feature in axis_features]
@@ -254,21 +257,87 @@ def evaluate_internal_corner_radius(shape: TopoDS_Shape, cfg: Config) -> RuleRes
 
         for feature in axis_features:
             radius = float(feature["radius"])
-            if radius >= recommended_min_radius_mm:
-                continue
             pocket_depth = float(feature["cylindrical_depth"])
             side = nearest_axis_side(feature["midpoint"], bounds, axis_name)
-            feature_insight_rows.append(
+            overlay_mesh_paths = (
+                export_feature_overlay_stl(
+                    step_file,
+                    feature_id(
+                        "rule1-overlay",
+                        axis_name,
+                        round(feature["midpoint"].X(), 3),
+                        round(feature["midpoint"].Y(), 3),
+                        round(feature["midpoint"].Z(), 3),
+                        round(radius, 3),
+                    ),
+                    [feature["radius_face"], *feature["wall_faces"]],
+                )
+                if step_file is not None
+                else []
+            )
+            radius_only_overlay_mesh_paths = (
+                export_feature_overlay_stl(
+                    step_file,
+                    feature_id(
+                        "rule1-count-overlay-v1",
+                        axis_name,
+                        round(feature["midpoint"].X(), 3),
+                        round(feature["midpoint"].Y(), 3),
+                        round(feature["midpoint"].Z(), 3),
+                        round(radius, 3),
+                    ),
+                    [feature["radius_face"]],
+                )
+                if step_file is not None
+                else []
+            )
+            insight = FeatureInsight(
+                id=feature_id(
+                    "rule1",
+                    axis_name,
+                    round(feature["midpoint"].X(), 3),
+                    round(feature["midpoint"].Y(), 3),
+                    round(feature["midpoint"].Z(), 3),
+                    round(radius, 3),
+                ),
+                summary=(
+                    f"{format_mm(radius)} inside corner radius in a pocket about {format_mm(pocket_depth)} deep "
+                    f"opening from the {side} side."
+                ),
+                highlight_kind="corner",
+                axis=axis_name,
+                measured_value=radius,
+                target_value=recommended_min_radius_mm,
+                units="mm",
+                anchor=point3d(feature["midpoint"]),
+                overlay_mesh_paths=overlay_mesh_paths,
+            )
+            all_feature_insight_rows.append(
                 (
                     radius,
                     FeatureInsight(
-                        summary=(
-                            f"{format_mm(radius)} inside corner radius in a pocket about {format_mm(pocket_depth)} deep "
-                            f"opening from the {side} side."
-                        )
-                    )
+                        id=feature_id(
+                            "rule1-count",
+                            axis_name,
+                            round(feature["midpoint"].X(), 3),
+                            round(feature["midpoint"].Y(), 3),
+                            round(feature["midpoint"].Z(), 3),
+                            round(radius, 3),
+                        ),
+                        summary=insight.summary,
+                        highlight_kind=insight.highlight_kind,
+                        axis=insight.axis,
+                        measured_value=insight.measured_value,
+                        target_value=insight.target_value,
+                        units=insight.units,
+                        anchor=insight.anchor,
+                        overlay_mesh_paths=radius_only_overlay_mesh_paths,
+                    ),
                 )
             )
+            if radius >= recommended_min_radius_mm:
+                continue
+            feature_insight_rows.append((radius, insight))
 
     if not feature_radii:
         return RuleResult(
@@ -287,6 +356,7 @@ def evaluate_internal_corner_radius(shape: TopoDS_Shape, cfg: Config) -> RuleRes
             threshold_kind="min",
             rule_multiplier=1.0,
             feature_insights=[],
+            all_feature_insights=[],
         )
 
     min_radius = min(feature_radii)
@@ -329,4 +399,5 @@ def evaluate_internal_corner_radius(shape: TopoDS_Shape, cfg: Config) -> RuleRes
         threshold_kind="min",
         rule_multiplier=rule_mult,
         feature_insights=[insight for _score, insight in sorted(feature_insight_rows, key=lambda row: row[0])],
+        all_feature_insights=[insight for _score, insight in sorted(all_feature_insight_rows, key=lambda row: row[0])],
     )

@@ -5,7 +5,7 @@ import UniformTypeIdentifiers
 
 @MainActor
 final class AppModel: ObservableObject {
-    @Published var selectedScreen: SidebarScreen = .check
+    @Published var selectedScreen: SidebarScreen = .recommendations
     @Published var backendInfo: BackendInstallation?
     @Published var health: HealthResponse?
     @Published var availableMaterials: [MaterialSpecPayload] = []
@@ -15,12 +15,19 @@ final class AppModel: ObservableObject {
     @Published var quantity: Int = 1
     @Published var analysis: AnalysisResponse?
     @Published var previewFileURL: URL?
+    @Published var pendingAnalysisFileName: String?
+    @Published var selectedRecommendationID: String?
+    @Published var selectedFeatureGroupID: String?
+    @Published var selectedFeatureInstanceID: String?
     @Published var isBootstrapping = false
     @Published var isAnalyzing = false
+    @Published var isGeneratingPreview = false
+    @Published var isRunningNextAnalysis = false
     @Published var isSavingSettings = false
     @Published var lastErrorMessage: String?
 
     let backendService: BackendProcessService
+    private var analysisTask: Task<Void, Never>?
 
     init(backendService: BackendProcessService = BackendProcessService()) {
         self.backendService = backendService
@@ -29,6 +36,20 @@ final class AppModel: ObservableObject {
 
     var hasAnalysisRuntime: Bool {
         health?.analysisRuntime.available == true
+    }
+
+    var displayedProcessData: PartProcessDataPayload? {
+        guard let analysis else {
+            return nil
+        }
+        let config = configDraft ?? savedConfig
+        let qtyLearningRate = config?.qtyLearningRate ?? 0.76
+        let qtyFactorFloor = config?.qtyFactorFloor ?? 0.29
+        return analysis.processData.applyingQuantity(
+            quantity,
+            qtyLearningRate: qtyLearningRate,
+            qtyFactorFloor: qtyFactorFloor
+        )
     }
 
     var settingsAreDirty: Bool {
@@ -83,7 +104,7 @@ final class AppModel: ObservableObject {
         panel.allowedContentTypes = [.stepFile, .stepTextFile]
         panel.prompt = "Select STEP File"
         if panel.runModal() == .OK {
-            setSelectedFileURL(panel.url)
+            runNewAnalysis(with: panel.url)
         }
     }
 
@@ -91,7 +112,7 @@ final class AppModel: ObservableObject {
         guard url.isFileURL, ["step", "stp"].contains(url.pathExtension.lowercased()) else {
             return
         }
-        setSelectedFileURL(url)
+        runNewAnalysis(with: url)
     }
 
     func saveSettings() async {
@@ -121,42 +142,159 @@ final class AppModel: ObservableObject {
             lastErrorMessage = "Select a STEP file before running analysis."
             return
         }
-        isAnalyzing = true
-        defer { isAnalyzing = false }
-
-        do {
-            analysis = try await backendService.analyze(fileURL: selectedFileURL, qty: quantity)
-            lastErrorMessage = nil
-            do {
-                let preview = try await backendService.generatePreview(fileURL: selectedFileURL)
-                previewFileURL = URL(fileURLWithPath: preview.previewPath)
-            } catch {
-                previewFileURL = nil
-                present(error)
-            }
-        } catch {
-            present(error)
-        }
+        runNewAnalysis(with: selectedFileURL)
     }
 
     func clearError() {
         lastErrorMessage = nil
     }
 
+    var selectedRecommendation: RecommendationPayload? {
+        guard let analysis else {
+            return nil
+        }
+        guard let selectedRecommendationID else {
+            return analysis.recommendations.first
+        }
+        return analysis.recommendations.first(where: { $0.id == selectedRecommendationID }) ?? analysis.recommendations.first
+    }
+
+    var visibleFeatureInsights: [FeatureInsightPayload] {
+        selectedRecommendation?.featureInsights ?? []
+    }
+
+    var focusedFeatureInsight: FeatureInsightPayload? {
+        guard let recommendation = selectedRecommendation else {
+            return nil
+        }
+        if let selectedFeatureInstanceID,
+           let match = recommendation.featureInsights.first(where: { $0.id == selectedFeatureInstanceID }) {
+            return match
+        }
+        return recommendation.featureInsights.first
+    }
+
+    func selectRecommendation(_ recommendation: RecommendationPayload) {
+        selectedRecommendationID = recommendation.id
+        selectedFeatureGroupID = recommendation.featureGroups.first?.id
+        selectedFeatureInstanceID = recommendation.featureGroups.first?.instances.first?.id
+    }
+
+    func selectFeatureGroup(_ group: RecommendationFeatureGroup) {
+        selectedFeatureGroupID = group.id
+        selectedFeatureInstanceID = group.instances.first?.id
+    }
+
+    func selectFeatureInstance(_ insight: FeatureInsightPayload) {
+        selectedFeatureInstanceID = insight.id
+    }
+
+    func stepSelectedFeatureInstance(in group: RecommendationFeatureGroup, delta: Int) {
+        guard !group.instances.isEmpty else {
+            return
+        }
+        let currentIndex = group.instances.firstIndex(where: { $0.id == selectedFeatureInstanceID }) ?? 0
+        let nextIndex = (currentIndex + delta + group.instances.count) % group.instances.count
+        selectedFeatureGroupID = group.id
+        selectedFeatureInstanceID = group.instances[nextIndex].id
+    }
+
+    func launchNewAnalysisPicker() {
+        pickStepFile()
+    }
+
+    func runNewAnalysis(with fileURL: URL?) {
+        guard let fileURL else {
+            return
+        }
+
+        analysisTask?.cancel()
+        pendingAnalysisFileName = fileURL.lastPathComponent
+        isRunningNextAnalysis = true
+        lastErrorMessage = nil
+
+        analysisTask = Task { [weak self] in
+            guard let self else {
+                return
+            }
+            defer {
+                if !Task.isCancelled {
+                    self.isRunningNextAnalysis = false
+                    self.pendingAnalysisFileName = nil
+                    self.analysisTask = nil
+                }
+            }
+
+            do {
+                let nextAnalysis = try await self.backendService.analyze(fileURL: fileURL, qty: self.quantity)
+                if Task.isCancelled {
+                    return
+                }
+                self.selectedFileURL = fileURL
+                self.analysis = nextAnalysis
+                self.quantity = nextAnalysis.processData.qty
+                self.selectedRecommendationID = nextAnalysis.recommendations.first?.id
+                self.selectedFeatureGroupID = nextAnalysis.recommendations.first?.featureGroups.first?.id
+                self.selectedFeatureInstanceID = nextAnalysis.recommendations.first?.featureGroups.first?.instances.first?.id
+                self.previewFileURL = nil
+                self.isAnalyzing = false
+                Task {
+                    await self.generatePreview(for: fileURL)
+                }
+            } catch {
+                if Task.isCancelled {
+                    return
+                }
+                self.present(error)
+            }
+        }
+    }
+
+    func generatePreview(for fileURL: URL) async {
+        isGeneratingPreview = true
+        defer { isGeneratingPreview = false }
+
+        do {
+            let preview = try await backendService.generatePreview(fileURL: fileURL)
+            guard selectedFileURL == fileURL else {
+                return
+            }
+            previewFileURL = URL(fileURLWithPath: preview.previewPath)
+        } catch {
+            guard selectedFileURL == fileURL else {
+                return
+            }
+            previewFileURL = nil
+            present(error)
+        }
+    }
+
     private func present(_ error: Error) {
         lastErrorMessage = (error as? LocalizedError)?.errorDescription ?? error.localizedDescription
+    }
+
+    func setQuantity(_ newValue: Int) {
+        quantity = max(1, newValue)
     }
 
     private func setSelectedFileURL(_ url: URL?) {
         selectedFileURL = url
         analysis = nil
         previewFileURL = nil
+        pendingAnalysisFileName = nil
+        selectedRecommendationID = nil
+        selectedFeatureGroupID = nil
+        selectedFeatureInstanceID = nil
+        isGeneratingPreview = false
+        isRunningNextAnalysis = false
         lastErrorMessage = nil
     }
 }
 
 enum SidebarScreen: String, CaseIterable, Identifiable {
-    case check
+    case recommendations
+    case ruleResults
+    case summary
     case settings
     case diagnostics
 
@@ -164,8 +302,12 @@ enum SidebarScreen: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .check:
-            return "Check"
+        case .recommendations:
+            return "Recommendations"
+        case .ruleResults:
+            return "Rule Results"
+        case .summary:
+            return "Analysis Summary"
         case .settings:
             return "Settings"
         case .diagnostics:
@@ -175,8 +317,12 @@ enum SidebarScreen: String, CaseIterable, Identifiable {
 
     var symbolName: String {
         switch self {
-        case .check:
-            return "checklist"
+        case .recommendations:
+            return "text.append"
+        case .ruleResults:
+            return "list.bullet.clipboard"
+        case .summary:
+            return "chart.bar.doc.horizontal"
         case .settings:
             return "slider.horizontal.3"
         case .diagnostics:

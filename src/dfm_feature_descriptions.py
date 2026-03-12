@@ -4,6 +4,8 @@ from typing import Iterable, Tuple
 
 from OCC.Core.gp import gp_Pnt
 
+from dfm_models import Point3D
+
 
 Bounds = Tuple[float, float, float, float, float, float]
 
@@ -51,3 +53,12 @@ def nearest_axis_side(point: gp_Pnt, bounds: Bounds, axis_name: str) -> str:
     if abs(value - axis_min) <= abs(value - axis_max):
         return f"-{axis_name}"
     return f"+{axis_name}"
+
+
+def point3d(point: gp_Pnt) -> Point3D:
+    return Point3D(x=point.X(), y=point.Y(), z=point.Z())
+
+
+def feature_id(prefix: str, *values: object) -> str:
+    normalized = "-".join(str(value).replace(" ", "_") for value in values)
+    return f"{prefix}-{normalized}"

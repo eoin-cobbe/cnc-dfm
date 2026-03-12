@@ -1,131 +1,221 @@
 import SwiftUI
 
+enum AnalysisScreenMode {
+    case recommendations
+    case ruleResults
+    case summary
+
+    var emptyTitle: String {
+        switch self {
+        case .recommendations:
+            return "No Recommendations Yet"
+        case .ruleResults:
+            return "No Rule Results Yet"
+        case .summary:
+            return "No Analysis Summary Yet"
+        }
+    }
+}
+
 struct CheckView: View {
     @ObservedObject var model: AppModel
+    let mode: AnalysisScreenMode
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 18) {
+        GeometryReader { geometry in
+            let isCompactLayout = geometry.size.width < 1_140
+
+            Group {
                 if let analysis = model.analysis {
-                    if let previewFileURL = model.previewFileURL {
-                        HStack {
-                            Spacer(minLength: 0)
-                            PartPreview3DView(fileURL: previewFileURL)
-                                .frame(maxWidth: 560)
-                            Spacer(minLength: 0)
-                        }
-                    }
-
-                    summarySection(analysis)
-                    recommendationsSection(analysis.recommendations)
-                    processSection(analysis.processData)
-                    rulesSection(analysis.rules)
-                    runCheckCard
-                } else {
-                    runCheckCard
-                    ContentUnavailableView(
-                        "No Analysis Yet",
-                        systemImage: "cube.transparent",
-                        description: Text("Choose a STEP file, set the quantity, and run the backend check.")
+                    analysisLayout(
+                        analysis,
+                        availableWidth: geometry.size.width,
+                        compact: isCompactLayout
                     )
-                    .frame(maxWidth: .infinity)
-                    .padding(.top, 28)
-                }
-            }
-            .padding(24)
-        }
-    }
-
-    private var runCheckCard: some View {
-        PanelCard(title: "Run Check", subtitle: "Use the Python backend already in this repo.") {
-            VStack(alignment: .leading, spacing: 14) {
-                dropZone
-
-                HStack(alignment: .center, spacing: 14) {
-                    Stepper(value: $model.quantity, in: 1...10_000) {
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text("Quantity")
-                                .font(.subheadline)
-                            Text("\(model.quantity)")
-                                .font(.title3.weight(.semibold))
-                        }
-                    }
-                    .frame(maxWidth: 220, alignment: .leading)
-
-                    Spacer()
-
-                    Button("Choose File") {
-                        model.pickStepFile()
-                    }
-                    .buttonStyle(.bordered)
-
-                    Button {
-                        Task {
-                            await model.analyzeSelectedFile()
-                        }
-                    } label: {
-                        if model.isAnalyzing {
-                            ProgressView()
-                                .controlSize(.small)
-                        } else {
-                            Text("Run Analysis")
-                        }
-                    }
-                    .buttonStyle(.borderedProminent)
-                    .disabled(model.selectedFileURL == nil || !model.hasAnalysisRuntime || model.isAnalyzing)
-                }
-
-                if let selectedFileURL = model.selectedFileURL {
-                    Text(selectedFileURL.path)
-                        .font(.footnote.monospaced())
-                        .foregroundStyle(AppTheme.mutedText)
-                        .textSelection(.enabled)
-                }
-
-                if !model.hasAnalysisRuntime {
-                    Text("Analysis runtime is not currently available. Check Diagnostics to confirm the selected Python environment can import OCC.")
-                        .font(.subheadline)
-                        .foregroundStyle(AppTheme.warning)
+                } else {
+                    emptyStateLayout(compact: isCompactLayout)
                 }
             }
         }
+        .padding(24)
     }
 
-    private var dropZone: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text("STEP File")
-                .font(.subheadline.weight(.medium))
+    private func analysisLayout(_ analysis: AnalysisResponse, availableWidth: CGFloat, compact: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 18) {
+            backgroundRunBanner
 
-            RoundedRectangle(cornerRadius: 18, style: .continuous)
-                .fill(Color.clear)
-                .strokeBorder(style: StrokeStyle(lineWidth: 1.25, dash: [8, 8]))
-                .foregroundStyle(AppTheme.panelBorder)
-                .frame(height: 140)
-                .overlay {
-                    VStack(spacing: 10) {
-                        Image(systemName: "square.and.arrow.down.on.square")
-                            .font(.system(size: 28, weight: .medium))
-                            .foregroundStyle(AppTheme.accentColor)
-                        Text("Drop a .step or .stp file here")
-                            .font(.headline)
-                        Text("or use the file picker")
-                            .font(.subheadline)
+            if compact {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 18) {
+                        previewPanel
+                        mainContent(analysis)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            } else {
+                HStack(alignment: .top, spacing: 24) {
+                    ScrollView {
+                        mainContent(analysis)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                    .frame(
+                        minWidth: contentColumnMinWidth(for: mode),
+                        idealWidth: contentColumnIdealWidth(for: mode, totalWidth: availableWidth),
+                        maxWidth: .infinity,
+                        maxHeight: .infinity,
+                        alignment: .topLeading
+                    )
+
+                    previewColumn(width: previewColumnWidth(for: mode, totalWidth: availableWidth))
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func emptyStateLayout(compact: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 18) {
+            backgroundRunBanner
+
+            if compact {
+                previewPanel
+                emptyStateCard
+            } else {
+                HStack(alignment: .top, spacing: 24) {
+                    emptyStateCard
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    previewColumn(width: previewColumnWidth(for: mode, totalWidth: 1_260))
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+    }
+
+    private func mainContent(_ analysis: AnalysisResponse) -> some View {
+        VStack(alignment: .leading, spacing: 18) {
+            switch mode {
+            case .recommendations:
+                recommendationsSection(analysis.recommendations)
+            case .ruleResults:
+                rulesSection(analysis.rules)
+            case .summary:
+                summaryScreen(analysis)
+            }
+        }
+    }
+
+    private func previewColumn(width: CGFloat) -> some View {
+        previewPanel
+            .frame(width: width, alignment: .topLeading)
+            .padding(.top, 4)
+    }
+
+    private func previewColumnWidth(for mode: AnalysisScreenMode, totalWidth: CGFloat) -> CGFloat {
+        let clampedWidth = max(totalWidth, 1_140)
+        switch mode {
+        case .recommendations:
+            return min(max(clampedWidth * 0.46, 520), 700)
+        case .ruleResults:
+            return min(max(clampedWidth * 0.44, 500), 660)
+        case .summary:
+            return min(max(clampedWidth * 0.42, 480), 620)
+        }
+    }
+
+    private func contentColumnMinWidth(for mode: AnalysisScreenMode) -> CGFloat {
+        switch mode {
+        case .recommendations:
+            return 360
+        case .ruleResults:
+            return 390
+        case .summary:
+            return 460
+        }
+    }
+
+    private func contentColumnIdealWidth(for mode: AnalysisScreenMode, totalWidth: CGFloat) -> CGFloat {
+        let previewWidth = previewColumnWidth(for: mode, totalWidth: totalWidth)
+        let remaining = totalWidth - previewWidth - 24
+        return max(contentColumnMinWidth(for: mode), remaining)
+    }
+
+    private var emptyStateCard: some View {
+        PanelCard(title: mode.emptyTitle, subtitle: "Please load model to run analysis.") {
+            ContentUnavailableView(
+                "",
+                systemImage: "cube.transparent",
+                description: Text("Please load model to run analysis.")
+            )
+            .labelsHidden()
+            .frame(maxWidth: .infinity, minHeight: 240)
+        }
+    }
+
+    @ViewBuilder
+    private var backgroundRunBanner: some View {
+        if model.isRunningNextAnalysis, let pendingAnalysisFileName = model.pendingAnalysisFileName {
+            PanelCard(title: "Running New Analysis", subtitle: "The current results stay visible until the next run finishes.") {
+                HStack(spacing: 12) {
+                    ProgressView()
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(pendingAnalysisFileName)
+                            .font(.subheadline.weight(.semibold))
+                        Text("Loading next analysis in the background")
+                            .font(.caption)
                             .foregroundStyle(AppTheme.mutedText)
                     }
+                    Spacer(minLength: 0)
                 }
-                .dropDestination(for: URL.self) { items, _ in
-                    guard let url = items.first else {
-                        return false
-                    }
-                    model.acceptDroppedFile(url)
-                    return true
-                }
+            }
         }
     }
 
-    private func summarySection(_ analysis: AnalysisResponse) -> some View {
+    @ViewBuilder
+    private var previewPanel: some View {
+        if let previewFileURL = model.previewFileURL {
+            PartPreview3DView(
+                fileURL: previewFileURL,
+                highlightedInsights: mode == .recommendations ? model.visibleFeatureInsights : [],
+                focusedInsightID: mode == .recommendations ? model.focusedFeatureInsight?.id : nil
+            )
+        } else if model.isGeneratingPreview {
+            PanelCard(title: "3D Preview", subtitle: "Analysis is ready. Generating preview mesh in the background.") {
+                HStack(spacing: 12) {
+                    ProgressView()
+                    Text("Loading preview…")
+                        .font(.subheadline)
+                        .foregroundStyle(AppTheme.mutedText)
+                }
+                .frame(maxWidth: .infinity, minHeight: 120, alignment: .center)
+            }
+        } else {
+            PanelCard(title: "3D Preview", subtitle: "Preview appears here after analysis.") {
+                ContentUnavailableView(
+                    "",
+                    systemImage: "view.3d",
+                    description: Text("Please load model to run analysis.")
+                )
+                .labelsHidden()
+                .frame(maxWidth: .infinity, minHeight: 220)
+            }
+        }
+    }
+
+    private func summaryScreen(_ analysis: AnalysisResponse) -> some View {
+        let processData = model.displayedProcessData ?? analysis.processData
+        return VStack(alignment: .leading, spacing: 18) {
+            overviewSection(analysis)
+            factsSection(processData)
+            preMultiplierDriversSection(processData)
+            multiplierSection(processData)
+            postMultiplierOutputsSection(processData)
+            costsSection(processData)
+        }
+    }
+
+    private func overviewSection(_ analysis: AnalysisResponse) -> some View {
         HStack(alignment: .top, spacing: 18) {
-            PanelCard(title: "Summary") {
+            PanelCard(title: "Overview") {
                 VStack(alignment: .leading, spacing: 10) {
                     Label(
                         analysis.summary.passed ? "All active rules passed" : "\(analysis.summary.failedRuleCount) rule(s) failed",
@@ -133,19 +223,137 @@ struct CheckView: View {
                     )
                     .foregroundStyle(analysis.summary.passed ? AppTheme.success : AppTheme.failure)
                     keyValueRow("File", analysis.filePath)
+                    keyValueRow("Rules Passed", "\(analysis.summary.passedRuleCount) / \(analysis.summary.totalRuleCount)")
                     keyValueRow("Rule Multiplier", formatMultiplier(analysis.summary.ruleMultiplier))
-                    if let topRecommendation = analysis.recommendations.first {
-                        keyValueRow("Top Recommendation", topRecommendation.title)
-                    }
                 }
             }
 
-            PanelCard(title: "Costs") {
+            PanelCard(title: "Current Top Recommendation") {
                 VStack(alignment: .leading, spacing: 10) {
-                    keyValueRow("Unit Estimate", formatCurrency(analysis.processData.totalEstimatedCostEur))
-                    keyValueRow("Batch Estimate", formatCurrency(analysis.processData.batchTotalEstimatedCostEur))
-                    keyValueRow("Machine Type", analysis.processData.machineType)
+                    if let topRecommendation = analysis.recommendations.first {
+                        recommendationBadge(topRecommendation.kind)
+                        Text(topRecommendation.title)
+                            .font(.headline)
+                        Text(topRecommendation.summary)
+                            .font(.subheadline)
+                            .foregroundStyle(AppTheme.mutedText)
+                    } else {
+                        Text("No recommendation available.")
+                            .font(.subheadline)
+                            .foregroundStyle(AppTheme.mutedText)
+                    }
                 }
+            }
+        }
+    }
+
+    private func factsSection(_ processData: PartProcessDataPayload) -> some View {
+        PanelCard(title: "Part Facts", subtitle: processData.materialLabel) {
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], alignment: .leading, spacing: 10) {
+                keyValueRow("Material", processData.materialLabel)
+                keyValueRow("Machine Type", processData.machineType)
+                keyValueRow("Part BBox", "\(format(processData.partBBoxXMm)) x \(format(processData.partBBoxYMm)) x \(format(processData.partBBoxZMm)) mm")
+                keyValueRow("Stock BBox (+10/axis)", "\(format(processData.stockBBoxXMm)) x \(format(processData.stockBBoxYMm)) x \(format(processData.stockBBoxZMm)) mm")
+                keyValueRow("Volume", "\(format(processData.volumeMm3)) mm³")
+                keyValueRow("Stock Volume", "\(format(processData.stockVolumeMm3)) mm³")
+                keyValueRow("Removed Volume", "\(format(processData.removedVolumeMm3)) mm³")
+                keyValueRow("Part Surface Area", "\(format(processData.partSurfaceAreaMm2)) mm²")
+                keyValueRow("Part SA/V", formatMetric(processData.partSavRatio))
+                keyValueRow("BBox SA/V", formatMetric(processData.bboxSavRatio))
+                keyValueRow("Mass", "\(format(processData.massKg)) kg")
+                keyValueRow("Stock Mass", "\(format(processData.stockMassKg)) kg")
+                keyValueRow("Setup Directions", processData.requiredSetupDirections)
+                quantityControlRow
+            }
+        }
+    }
+
+    private var quantityControlRow: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("QUANTITY")
+                .font(.caption2.weight(.medium))
+                .foregroundStyle(AppTheme.mutedText)
+
+            HStack(spacing: 8) {
+                Stepper(
+                    value: Binding(
+                        get: { model.quantity },
+                        set: { model.setQuantity($0) }
+                    ),
+                    in: 1...100_000
+                ) {
+                    EmptyView()
+                }
+                .labelsHidden()
+                .fixedSize()
+
+                TextField(
+                    "Qty",
+                    value: Binding(
+                        get: { model.quantity },
+                        set: { model.setQuantity($0) }
+                    ),
+                    format: .number
+                )
+                .textFieldStyle(.roundedBorder)
+                .frame(width: 92)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func preMultiplierDriversSection(_ processData: PartProcessDataPayload) -> some View {
+        PanelCard(title: "Pre-Multiplier Drivers") {
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], alignment: .leading, spacing: 10) {
+                keyValueRow("Surface Area", formatMultiplier(processData.surfaceAreaRatio))
+                keyValueRow("Surface Complexity", "\(processData.surfaceComplexityFaces) faces")
+                keyValueRow("Hole Count", "\(processData.holeCount)")
+                keyValueRow("Internal Radius Count", "\(processData.radiusCount)")
+                keyValueRow("Machinability Index", formatMetric(processData.machinabilityIndex))
+                keyValueRow("Baseline 6061 MRR", "\(format(processData.baseline6061MrrMm3PerMin)) mm³/min")
+                keyValueRow("Estimated Roughing MRR", "\(format(processData.estimatedRoughingMrrMm3PerMin)) mm³/min")
+                keyValueRow("Material Source", processData.materialBilletCostSource)
+            }
+        }
+    }
+
+    private func multiplierSection(_ processData: PartProcessDataPayload) -> some View {
+        PanelCard(title: "Multipliers") {
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], alignment: .leading, spacing: 10) {
+                keyValueRow("Surface Area Multiplier", formatMultiplier(processData.surfaceAreaMultiplier))
+                keyValueRow("Complexity Multiplier", formatMultiplier(processData.complexityMultiplier))
+                keyValueRow("Hole Multiplier", formatMultiplier(processData.holeCountMultiplier))
+                keyValueRow("Radius Multiplier", formatMultiplier(processData.radiusCountMultiplier))
+                keyValueRow("Material Multiplier", formatMultiplier(processData.materialTimeMultiplier))
+                keyValueRow("Rule Multiplier", formatMultiplier(processData.ruleMultiplier))
+                keyValueRow("Total Time Multiplier", formatMultiplier(processData.totalTimeMultiplier))
+                keyValueRow("Qty Multiplier", formatMultiplier(processData.qtyMultiplier))
+            }
+        }
+    }
+
+    private func postMultiplierOutputsSection(_ processData: PartProcessDataPayload) -> some View {
+        PanelCard(title: "Post-Multiplier Outputs") {
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], alignment: .leading, spacing: 10) {
+                keyValueRow("Roughing Time (Pre Qty)", "\(format(processData.roughingTimeMin)) min")
+                keyValueRow("Base Machining Time", "\(format(processData.baseMachiningTimeMin)) min")
+                keyValueRow("Machining Time (Pre Qty)", "\(format(processData.machiningTimeMin)) min")
+                keyValueRow("Machine Rate", formatCurrency(processData.machineHourlyRateEur))
+            }
+        }
+    }
+
+    private func costsSection(_ processData: PartProcessDataPayload) -> some View {
+        PanelCard(title: "Costs") {
+            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], alignment: .leading, spacing: 10) {
+                keyValueRow("Raw Material Rate", "\(format(processData.materialBilletCostEurPerKg)) EUR/kg")
+                keyValueRow("Material Base Fee", formatCurrency(processData.materialFixedCostEur))
+                keyValueRow("Material Total", formatCurrency(processData.materialStockCostEur))
+                keyValueRow("Roughing Cost", formatCurrency(processData.roughingCost))
+                keyValueRow("Machining Cost", formatCurrency(processData.machiningCost))
+                keyValueRow("Unit Estimate", formatCurrency(processData.totalEstimatedCostEur))
+                keyValueRow("Batch Estimate", formatCurrency(processData.batchTotalEstimatedCostEur))
+                keyValueRow("Material Fixed Cost Source", processData.materialFixedCostSource)
             }
         }
     }
@@ -153,10 +361,14 @@ struct CheckView: View {
     private func recommendationsSection(_ recommendations: [RecommendationPayload]) -> some View {
         PanelCard(
             title: "Recommendations",
-            subtitle: recommendations.first?.kind == "blocker" ? "Fix blockers first, then reduce cost drivers." : "Prioritized design guidance from the analysis."
+            subtitle: recommendations.first?.kind == "blocker"
+                ? "Fix blockers first, then reduce cost drivers. Click a recommendation to focus the geometry."
+                : "Prioritized design guidance from the analysis. Click a recommendation to focus the geometry."
         ) {
             VStack(alignment: .leading, spacing: 14) {
                 ForEach(recommendations) { recommendation in
+                    let isSelected = model.selectedRecommendationID == recommendation.id
+
                     VStack(alignment: .leading, spacing: 10) {
                         HStack(alignment: .top, spacing: 10) {
                             recommendationBadge(recommendation.kind)
@@ -179,6 +391,19 @@ struct CheckView: View {
                             .font(.footnote)
                             .foregroundStyle(AppTheme.mutedText)
 
+                        if isSelected && !recommendation.featureGroups.isEmpty {
+                            VStack(alignment: .leading, spacing: 8) {
+                                Text("Where")
+                                    .font(.caption.weight(.semibold))
+                                    .foregroundStyle(AppTheme.accentColor)
+
+                                ForEach(recommendation.featureGroups) { group in
+                                    featureGroupRow(group)
+                                }
+                            }
+                            .padding(.vertical, 4)
+                        }
+
                         VStack(alignment: .leading, spacing: 6) {
                             ForEach(recommendation.actions, id: \.self) { action in
                                 HStack(alignment: .top, spacing: 8) {
@@ -193,6 +418,19 @@ struct CheckView: View {
                             .font(.caption)
                             .foregroundStyle(AppTheme.mutedText)
                     }
+                    .padding(12)
+                    .background(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .fill(isSelected ? AppTheme.panelBackground.opacity(0.85) : Color.clear)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: 14, style: .continuous)
+                            .stroke(isSelected ? AppTheme.accentColor.opacity(0.45) : AppTheme.panelBorder.opacity(0.4), lineWidth: 1)
+                    )
+                    .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .onTapGesture {
+                        model.selectRecommendation(recommendation)
+                    }
 
                     if recommendation.id != recommendations.last?.id {
                         Divider()
@@ -202,19 +440,61 @@ struct CheckView: View {
         }
     }
 
-    private func processSection(_ processData: PartProcessDataPayload) -> some View {
-        PanelCard(title: "Part Facts", subtitle: processData.materialLabel) {
-            LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], alignment: .leading, spacing: 10) {
-                keyValueRow("Part BBox", "\(format(processData.partBBoxXMm)) x \(format(processData.partBBoxYMm)) x \(format(processData.partBBoxZMm)) mm")
-                keyValueRow("Stock BBox", "\(format(processData.stockBBoxXMm)) x \(format(processData.stockBBoxYMm)) x \(format(processData.stockBBoxZMm)) mm")
-                keyValueRow("Volume", "\(format(processData.volumeMm3)) mm³")
-                keyValueRow("Removed Volume", "\(format(processData.removedVolumeMm3)) mm³")
-                keyValueRow("Mass", "\(format(processData.massKg)) kg")
-                keyValueRow("Surface Complexity", "\(processData.surfaceComplexityFaces) faces")
-                keyValueRow("Setups", processData.requiredSetupDirections)
-                keyValueRow("Estimated Roughing MRR", "\(format(processData.estimatedRoughingMrrMm3PerMin)) mm³/min")
+    private func featureGroupRow(_ group: RecommendationFeatureGroup) -> some View {
+        let isSelected = model.selectedFeatureGroupID == group.id
+        let currentIndex = group.instances.firstIndex(where: { $0.id == model.selectedFeatureInstanceID }) ?? 0
+
+        return VStack(alignment: .leading, spacing: 8) {
+            Button {
+                model.selectFeatureGroup(group)
+            } label: {
+                HStack(alignment: .top, spacing: 10) {
+                    Image(systemName: isSelected ? "scope" : "mappin.and.ellipse")
+                        .font(.caption.weight(.semibold))
+                        .foregroundStyle(isSelected ? AppTheme.accentColor : AppTheme.mutedText)
+
+                    Text(group.count > 1 ? "x\(group.count) \(group.summary)" : group.summary)
+                        .font(.footnote)
+                        .multilineTextAlignment(.leading)
+
+                    Spacer(minLength: 0)
+                }
+            }
+            .buttonStyle(.plain)
+
+            if isSelected, group.count > 1 {
+                HStack(spacing: 10) {
+                    Button {
+                        model.stepSelectedFeatureInstance(in: group, delta: -1)
+                    } label: {
+                        Image(systemName: "chevron.left")
+                    }
+                    .buttonStyle(.bordered)
+
+                    Text("\(currentIndex + 1) of \(group.count)")
+                        .font(.caption.monospacedDigit())
+                        .foregroundStyle(AppTheme.mutedText)
+
+                    Button {
+                        model.stepSelectedFeatureInstance(in: group, delta: 1)
+                    } label: {
+                        Image(systemName: "chevron.right")
+                    }
+                    .buttonStyle(.bordered)
+
+                    Spacer(minLength: 0)
+                }
             }
         }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(isSelected ? AppTheme.accentColor.opacity(0.08) : Color.clear)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(isSelected ? AppTheme.accentColor.opacity(0.35) : AppTheme.panelBorder.opacity(0.3), lineWidth: 1)
+        )
     }
 
     private func rulesSection(_ rules: [RulePayload]) -> some View {

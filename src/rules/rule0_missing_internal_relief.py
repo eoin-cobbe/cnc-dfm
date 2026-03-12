@@ -13,9 +13,9 @@ from OCC.Core.TopAbs import TopAbs_EDGE, TopAbs_FACE, TopAbs_VERTEX
 from OCC.Core.TopExp import TopExp_Explorer, topexp
 from OCC.Core.TopoDS import TopoDS_Edge, TopoDS_Face, TopoDS_Shape, TopoDS_Vertex, topods
 from OCC.Core.TopTools import TopTools_IndexedDataMapOfShapeListOfShape, TopTools_ListIteratorOfListOfShape
-from OCC.Core.gp import gp_Dir
+from OCC.Core.gp import gp_Dir, gp_Pnt
 
-from dfm_feature_descriptions import format_mm
+from dfm_feature_descriptions import feature_id, format_mm, point3d
 from dfm_geometry import (
     face_midpoint_and_normal,
     faces_for_edge,
@@ -409,10 +409,24 @@ def evaluate_missing_internal_relief(shape: TopoDS_Shape, cfg: Config) -> RuleRe
             (
                 axis_span,
                 FeatureInsight(
+                    id=feature_id(
+                        "rule0",
+                        axis_name,
+                        round(midpoint[0], 3),
+                        round(midpoint[1], 3),
+                        round(midpoint[2], 3),
+                    ),
                     summary=(
                         f"Sharp internal wall-wall corner spanning about {format_mm(axis_span)} along {axis_name} "
                         f"with no tool relief at the {end_condition}."
-                    )
+                    ),
+                    highlight_kind="edge",
+                    axis=axis_name,
+                    measured_value=axis_span,
+                    units="mm",
+                    anchor=point3d(gp_Pnt(*midpoint)),
+                    segment_start=point3d(p_start),
+                    segment_end=point3d(p_end),
                 ),
             )
         )
