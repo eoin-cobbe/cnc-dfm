@@ -1,0 +1,14 @@
+.git
+.gitignore
+.conda-env
+.swift-clang-cache
+.swiftpm-cache
+.vscode
+__pycache__
+*.pyc
+apps/macos/CNCDFMApp/.build
+apps/macos/CNCDFMApp/dist
+apps/web/.next
+apps/web/node_modules
+apps/web/out
+cache

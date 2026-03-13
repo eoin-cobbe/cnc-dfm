@@ -36,6 +36,7 @@ def evaluate_tool_depth_to_diameter(shape: TopoDS_Shape, cfg: Config, step_file:
     worst_ratio = 0.0
     ratios = []
     feature_insight_rows = []
+    all_feature_insight_rows = []
 
     for axis_name, axis_features in features_by_axis.items():
         layers = _group_corner_features_by_depth(axis_features, tol_mm=0.5)
@@ -57,10 +58,31 @@ def evaluate_tool_depth_to_diameter(shape: TopoDS_Shape, cfg: Config, step_file:
                 ratio = depth / inferred_tool_diameter
                 ratios.append(ratio)
                 worst_ratio = max(worst_ratio, ratio)
+                anchor_point = average_point(feature["midpoint"] for feature in pocket_features)
+                side = nearest_axis_side(anchor_point, bounds, axis_name)
+                lightweight_insight = FeatureInsight(
+                    id=feature_id(
+                        "rule6",
+                        axis_name,
+                        round(anchor_point.X(), 3),
+                        round(anchor_point.Y(), 3),
+                        round(anchor_point.Z(), 3),
+                        round(ratio, 3),
+                    ),
+                    summary=(
+                        f"Pocket about {format_mm(depth)} deep on the {side} side would force an inferred "
+                        f"{format_mm(inferred_tool_diameter)} cutter (depth/tool {format_ratio(ratio)})."
+                    ),
+                    highlight_kind="pocket",
+                    axis=axis_name,
+                    measured_value=ratio,
+                    target_value=cfg.max_tool_depth_to_diameter_ratio,
+                    units="ratio",
+                    anchor=point3d(anchor_point),
+                )
+                all_feature_insight_rows.append((ratio, lightweight_insight))
                 if ratio > cfg.max_tool_depth_to_diameter_ratio:
                     axis_offenders += 1
-                    anchor_point = average_point(feature["midpoint"] for feature in pocket_features)
-                    side = nearest_axis_side(anchor_point, bounds, axis_name)
                     overlay_faces = []
                     for feature in pocket_features:
                         radius_face = feature.get("radius_face")
@@ -88,24 +110,14 @@ def evaluate_tool_depth_to_diameter(shape: TopoDS_Shape, cfg: Config, step_file:
                         (
                             ratio,
                             FeatureInsight(
-                                id=feature_id(
-                                    "rule6",
-                                    axis_name,
-                                    round(anchor_point.X(), 3),
-                                    round(anchor_point.Y(), 3),
-                                    round(anchor_point.Z(), 3),
-                                    round(ratio, 3),
-                                ),
-                                summary=(
-                                    f"Pocket about {format_mm(depth)} deep on the {side} side would force an inferred "
-                                    f"{format_mm(inferred_tool_diameter)} cutter (depth/tool {format_ratio(ratio)})."
-                                ),
-                                highlight_kind="pocket",
-                                axis=axis_name,
-                                measured_value=ratio,
-                                target_value=cfg.max_tool_depth_to_diameter_ratio,
-                                units="ratio",
-                                anchor=point3d(anchor_point),
+                                id=lightweight_insight.id,
+                                summary=lightweight_insight.summary,
+                                highlight_kind=lightweight_insight.highlight_kind,
+                                axis=lightweight_insight.axis,
+                                measured_value=lightweight_insight.measured_value,
+                                target_value=lightweight_insight.target_value,
+                                units=lightweight_insight.units,
+                                anchor=lightweight_insight.anchor,
                                 overlay_mesh_paths=overlay_mesh_paths,
                             ),
                         )
@@ -151,4 +163,5 @@ def evaluate_tool_depth_to_diameter(shape: TopoDS_Shape, cfg: Config, step_file:
         threshold_kind="max",
         rule_multiplier=rule_mult,
         feature_insights=[insight for _score, insight in sorted(feature_insight_rows, key=lambda row: row[0], reverse=True)],
+        all_feature_insights=[insight for _score, insight in sorted(all_feature_insight_rows, key=lambda row: row[0], reverse=True)],
     )

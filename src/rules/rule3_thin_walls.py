@@ -268,6 +268,7 @@ def evaluate_thin_walls(shape: TopoDS_Shape, cfg: Config, step_file: str | None 
     ]
     axis_breakdown: Dict[str, Tuple[int, int, int]] = {}
     feature_insight_rows: List[Tuple[float, FeatureInsight]] = []
+    all_feature_insight_rows: List[Tuple[float, FeatureInsight]] = []
     for axis in ("X", "Y", "Z"):
         axis_vals = wall_features_by_axis[axis]
         axis_detected = len(axis_vals)
@@ -276,54 +277,64 @@ def evaluate_thin_walls(shape: TopoDS_Shape, cfg: Config, step_file: str | None 
         axis_breakdown[axis] = (axis_detected, axis_pass, axis_fail)
         for feature in axis_vals:
             thickness = float(feature["thickness"])
-            if thickness >= cfg.min_wall_thickness_mm:
-                continue
             side = nearest_axis_side(feature["probe"], bounds, axis)
             span_major = max(float(feature["span_a"]), float(feature["span_b"]))
             span_minor = min(float(feature["span_a"]), float(feature["span_b"]))
-            overlay_faces = [feature["top_face"]] if feature.get("top_face") is not None else [feature["face_i"], feature["face_j"]]
-            overlay_mesh_paths = (
-                export_feature_overlay_stl(
-                    step_file,
-                    feature_id(
-                        "rule3-overlay-v2",
-                        axis,
-                        round(feature["probe"].X(), 3),
-                        round(feature["probe"].Y(), 3),
-                        round(feature["probe"].Z(), 3),
-                        round(thickness, 3),
-                    ),
-                    overlay_faces,
-                )
-                if step_file is not None
-                else []
+            lightweight_insight = FeatureInsight(
+                id=feature_id(
+                    "rule3",
+                    axis,
+                    round(feature["probe"].X(), 3),
+                    round(feature["probe"].Y(), 3),
+                    round(feature["probe"].Z(), 3),
+                    round(thickness, 3),
+                ),
+                summary=(
+                    f"{format_mm(thickness)} wall on the {side} side spanning about {format_mm(span_major)} x "
+                    f"{format_mm(span_minor)}."
+                ),
+                highlight_kind="wall_pair",
+                axis=axis,
+                measured_value=thickness,
+                target_value=cfg.min_wall_thickness_mm,
+                units="mm",
+                anchor=point3d(feature["probe"]),
             )
-            feature_insight_rows.append(
-                (
-                    thickness,
-                    FeatureInsight(
-                        id=feature_id(
-                            "rule3",
+            all_feature_insight_rows.append((thickness, lightweight_insight))
+            if thickness < cfg.min_wall_thickness_mm:
+                overlay_faces = [feature["top_face"]] if feature.get("top_face") is not None else [feature["face_i"], feature["face_j"]]
+                overlay_mesh_paths = (
+                    export_feature_overlay_stl(
+                        step_file,
+                        feature_id(
+                            "rule3-overlay-v2",
                             axis,
                             round(feature["probe"].X(), 3),
                             round(feature["probe"].Y(), 3),
                             round(feature["probe"].Z(), 3),
                             round(thickness, 3),
                         ),
-                        summary=(
-                            f"{format_mm(thickness)} wall on the {side} side spanning about {format_mm(span_major)} x "
-                            f"{format_mm(span_minor)}."
-                        ),
-                        highlight_kind="wall_pair",
-                        axis=axis,
-                        measured_value=thickness,
-                        target_value=cfg.min_wall_thickness_mm,
-                        units="mm",
-                        anchor=point3d(feature["probe"]),
-                        overlay_mesh_paths=overlay_mesh_paths,
-                    ),
+                        overlay_faces,
+                    )
+                    if step_file is not None
+                    else []
                 )
-            )
+                feature_insight_rows.append(
+                    (
+                        thickness,
+                        FeatureInsight(
+                            id=lightweight_insight.id,
+                            summary=lightweight_insight.summary,
+                            highlight_kind=lightweight_insight.highlight_kind,
+                            axis=lightweight_insight.axis,
+                            measured_value=lightweight_insight.measured_value,
+                            target_value=lightweight_insight.target_value,
+                            units=lightweight_insight.units,
+                            anchor=lightweight_insight.anchor,
+                            overlay_mesh_paths=overlay_mesh_paths,
+                        ),
+                    )
+                )
 
     if not thicknesses:
         return RuleResult(
@@ -341,6 +352,7 @@ def evaluate_thin_walls(shape: TopoDS_Shape, cfg: Config, step_file: str | None 
             threshold_kind="min",
             rule_multiplier=1.0,
             feature_insights=[],
+            all_feature_insights=[],
         )
 
     thinnest = min(thicknesses)
@@ -373,4 +385,5 @@ def evaluate_thin_walls(shape: TopoDS_Shape, cfg: Config, step_file: str | None 
         threshold_kind="min",
         rule_multiplier=rule_mult,
         feature_insights=[insight for _score, insight in sorted(feature_insight_rows, key=lambda row: row[0])],
+        all_feature_insights=[insight for _score, insight in sorted(all_feature_insight_rows, key=lambda row: row[0])],
     )

@@ -17,6 +17,7 @@ class FeatureInsight:
     segment_start: Optional["Point3D"] = None
     segment_end: Optional["Point3D"] = None
     overlay_mesh_paths: List[str] = field(default_factory=list)
+    cost_impact: Optional["CostImpactRange"] = None
 
 
 @dataclass
@@ -137,6 +138,33 @@ class AnalysisSummary:
 
 
 @dataclass
+class CostImpactBreakdown:
+    label: str
+    minimum_unit_savings_eur: float
+    maximum_unit_savings_eur: float
+    minimum_batch_savings_eur: float
+    maximum_batch_savings_eur: float
+    details: str = ""
+
+
+@dataclass
+class CostImpactRange:
+    current_unit_cost_eur: float
+    current_batch_cost_eur: float
+    minimum_unit_savings_eur: float
+    maximum_unit_savings_eur: float
+    minimum_batch_savings_eur: float
+    maximum_batch_savings_eur: float
+    minimum_percent_savings: float
+    maximum_percent_savings: float
+    conservative_label: str
+    optimistic_label: str
+    rationale: str
+    direct_breakdown: List[CostImpactBreakdown] = field(default_factory=list)
+    linked_breakdown: List[CostImpactBreakdown] = field(default_factory=list)
+
+
+@dataclass
 class Recommendation:
     kind: str
     priority: int
@@ -146,6 +174,7 @@ class Recommendation:
     actions: List[str]
     source: str
     feature_insights: List[FeatureInsight] = field(default_factory=list)
+    cost_impact: Optional[CostImpactRange] = None
 
 
 @dataclass

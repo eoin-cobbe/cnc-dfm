@@ -200,6 +200,18 @@ def _recommendation_tag(kind: str) -> str:
     return paint("INFO", Ansi.BOLD, Ansi.GREEN)
 
 
+def _format_currency_range(minimum: float, maximum: float) -> str:
+    if abs(minimum - maximum) <= 0.005:
+        return f"{maximum:.2f} EUR"
+    return f"{minimum:.2f}-{maximum:.2f} EUR"
+
+
+def _format_percent_range(minimum: float, maximum: float) -> str:
+    if abs(minimum - maximum) <= 0.05:
+        return f"{maximum:.1f}%"
+    return f"{minimum:.1f}-{maximum:.1f}%"
+
+
 def print_recommendations(recommendations: List[Recommendation]) -> None:
     print(f"{paint('RECOMMENDATIONS', Ansi.BOLD, Ansi.BLUE)}")
     if not recommendations:
@@ -214,6 +226,14 @@ def print_recommendations(recommendations: List[Recommendation]) -> None:
             f"{paint(f'P{recommendation.priority}', Ansi.DIM)}"
         )
         print(f"     {recommendation.summary}")
+        if recommendation.cost_impact is not None:
+            print(
+                "     "
+                f"{paint('SAVE', Ansi.BOLD, Ansi.GREEN)}  "
+                f"{_format_currency_range(recommendation.cost_impact.minimum_unit_savings_eur, recommendation.cost_impact.maximum_unit_savings_eur)} / unit  "
+                f"{_format_currency_range(recommendation.cost_impact.minimum_batch_savings_eur, recommendation.cost_impact.maximum_batch_savings_eur)} / batch  "
+                f"({_format_percent_range(recommendation.cost_impact.minimum_percent_savings, recommendation.cost_impact.maximum_percent_savings)})"
+            )
         if recommendation.feature_insights:
             print(f"     {paint('WHERE', Ansi.BOLD, Ansi.CYAN)}")
             grouped_insights: "OrderedDict[str, int]" = OrderedDict()
@@ -221,8 +241,37 @@ def print_recommendations(recommendations: List[Recommendation]) -> None:
                 grouped_insights[insight.summary] = grouped_insights.get(insight.summary, 0) + 1
             for summary, count in grouped_insights.items():
                 prefix = f"x{count} " if count > 1 else ""
-                print(f"       - {prefix}{summary}")
+                detail = ""
+                matching = [insight for insight in recommendation.feature_insights if insight.summary == summary and insight.cost_impact is not None]
+                if matching:
+                    detail = (
+                        "  "
+                        f"[save {_format_currency_range(matching[0].cost_impact.minimum_unit_savings_eur, matching[0].cost_impact.maximum_unit_savings_eur)} / unit]"
+                    )
+                print(f"       - {prefix}{summary}{detail}")
         print(f"     {paint('IMPACT', Ansi.BOLD, Ansi.YELLOW)}  {recommendation.impact}")
+        if recommendation.cost_impact is not None:
+            print(f"     {paint('WHY', Ansi.BOLD, Ansi.CYAN)}  {recommendation.cost_impact.rationale}")
+            print(
+                f"     {paint('RANGE', Ansi.DIM)}  "
+                f"{recommendation.cost_impact.conservative_label} -> {recommendation.cost_impact.optimistic_label}"
+            )
+            for row in recommendation.cost_impact.direct_breakdown:
+                print(
+                    "     "
+                    f"{paint('DIRECT', Ansi.DIM)}  {row.label}: "
+                    f"{_format_currency_range(row.minimum_unit_savings_eur, row.maximum_unit_savings_eur)} / unit"
+                )
+                if row.details:
+                    print(f"             {row.details}")
+            for row in recommendation.cost_impact.linked_breakdown:
+                print(
+                    "     "
+                    f"{paint('LINKED', Ansi.DIM)}  {row.label}: "
+                    f"{_format_currency_range(row.minimum_unit_savings_eur, row.maximum_unit_savings_eur)} / unit"
+                )
+                if row.details:
+                    print(f"             {row.details}")
         for action in recommendation.actions:
             print(f"     - {action}")
         print(f"     {paint('SOURCE', Ansi.DIM)}  {recommendation.source}")
