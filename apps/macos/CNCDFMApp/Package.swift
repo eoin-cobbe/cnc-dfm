@@ -17,5 +17,10 @@ let package = Package(
             name: "CNCDFMApp",
             path: "Sources"
         ),
+        .testTarget(
+            name: "CNCDFMAppTests",
+            dependencies: ["CNCDFMApp"],
+            path: "Tests"
+        ),
     ]
 )

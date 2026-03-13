@@ -20,6 +20,13 @@ def _emit_json(payload: Dict[str, Any]) -> int:
     return 0
 
 
+def _serialize_analysis_result(analysis) -> Dict[str, Any]:
+    payload = asdict(analysis)
+    for rule_payload in payload.get("rules", []):
+        rule_payload.pop("all_feature_insights", None)
+    return payload
+
+
 def _load_json_input(input_value: str) -> Dict[str, Any]:
     if input_value == "-":
         raw = sys.stdin.read()
@@ -104,7 +111,7 @@ def _handle_health(_args: argparse.Namespace) -> int:
     return _emit_json(
         {
             "status": "ok",
-            "apiVersion": 1,
+            "apiVersion": 2,
             "configPath": str(config_path()),
             "configExists": config_path().exists(),
             "pythonExecutable": sys.executable,
@@ -132,7 +139,7 @@ def _handle_analyze(args: argparse.Namespace) -> int:
             cfg_values = normalize_config_payload(payload, base=cfg_values)
 
     analysis = analyze_step_file(args.input, _config_to_model(cfg_values), args.qty)
-    return _emit_json(asdict(analysis))
+    return _emit_json(_serialize_analysis_result(analysis))
 
 
 def _handle_preview(args: argparse.Namespace) -> int:

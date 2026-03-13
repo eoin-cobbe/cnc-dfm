@@ -25,5 +25,10 @@ cache
 apps/macos/CNCDFMApp/.build/
 apps/macos/CNCDFMApp/dist/
 
+# Web app build artifacts
+apps/web/.next/
+apps/web/node_modules/
+apps/web/out/
+
 # Editor settings
 .vscode/

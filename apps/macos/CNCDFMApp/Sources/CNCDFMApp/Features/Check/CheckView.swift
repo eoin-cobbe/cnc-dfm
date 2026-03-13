@@ -204,12 +204,30 @@ struct CheckView: View {
     private func summaryScreen(_ analysis: AnalysisResponse) -> some View {
         let processData = model.displayedProcessData ?? analysis.processData
         return VStack(alignment: .leading, spacing: 18) {
+            costHeadlineSection(processData)
             overviewSection(analysis)
             factsSection(processData)
             preMultiplierDriversSection(processData)
             multiplierSection(processData)
             postMultiplierOutputsSection(processData)
             costsSection(processData)
+        }
+    }
+
+    private func costHeadlineSection(_ processData: PartProcessDataPayload) -> some View {
+        PanelCard(title: "Unit Estimate", subtitle: "Current cost per unit in the active analysis. Recommendation savings use a fixed qty-1 baseline.") {
+            VStack(alignment: .leading, spacing: 14) {
+                Text(formatCurrency(processData.totalEstimatedCostEur))
+                    .font(.system(size: 34, weight: .bold, design: .rounded))
+                    .foregroundStyle(.primary)
+
+                HStack(spacing: 18) {
+                    smallStat("Batch", formatCurrency(processData.batchTotalEstimatedCostEur))
+                    smallStat("Qty", "\(processData.qty)")
+                    smallStat("Machine", processData.machineType)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
     }
 
@@ -362,8 +380,8 @@ struct CheckView: View {
         PanelCard(
             title: "Recommendations",
             subtitle: recommendations.first?.kind == "blocker"
-                ? "Fix blockers first, then reduce cost drivers. Click a recommendation to focus the geometry."
-                : "Prioritized design guidance from the analysis. Click a recommendation to focus the geometry."
+                ? "Fix blockers first, then reduce cost drivers. Savings shown here are unit what-if estimates against a fixed qty-1 baseline."
+                : "Prioritized design guidance from the analysis. Savings shown here are unit what-if estimates against a fixed qty-1 baseline."
         ) {
             VStack(alignment: .leading, spacing: 14) {
                 ForEach(recommendations) { recommendation in
@@ -391,6 +409,10 @@ struct CheckView: View {
                             .font(.footnote)
                             .foregroundStyle(AppTheme.mutedText)
 
+                        if let costImpact = recommendation.costImpact {
+                            costImpactSummaryRow(costImpact)
+                        }
+
                         if isSelected && !recommendation.featureGroups.isEmpty {
                             VStack(alignment: .leading, spacing: 8) {
                                 Text("Where")
@@ -402,6 +424,10 @@ struct CheckView: View {
                                 }
                             }
                             .padding(.vertical, 4)
+                        }
+
+                        if isSelected, let costImpact = recommendation.costImpact {
+                            costImpactBreakdownSection(costImpact)
                         }
 
                         VStack(alignment: .leading, spacing: 6) {
@@ -417,6 +443,12 @@ struct CheckView: View {
                         Text("Source: \(recommendation.source)")
                             .font(.caption)
                             .foregroundStyle(AppTheme.mutedText)
+
+                        if isSelected, recommendation.costImpact != nil {
+                            Text("Savings are independent unit what-if estimates against a fixed qty-1 baseline. They do not live-update with Summary tab quantity, and recommendation ranges should not be added together.")
+                                .font(.caption)
+                                .foregroundStyle(AppTheme.mutedText)
+                        }
                     }
                     .padding(12)
                     .background(
@@ -443,6 +475,7 @@ struct CheckView: View {
     private func featureGroupRow(_ group: RecommendationFeatureGroup) -> some View {
         let isSelected = model.selectedFeatureGroupID == group.id
         let currentIndex = group.instances.firstIndex(where: { $0.id == model.selectedFeatureInstanceID }) ?? 0
+        let currentImpact = group.instances[safe: currentIndex]?.costImpact ?? group.instances.first(where: { $0.costImpact != nil })?.costImpact
 
         return VStack(alignment: .leading, spacing: 8) {
             Button {
@@ -456,6 +489,10 @@ struct CheckView: View {
                     Text(group.count > 1 ? "x\(group.count) \(group.summary)" : group.summary)
                         .font(.footnote)
                         .multilineTextAlignment(.leading)
+
+                    if let currentImpact {
+                        costImpactChip(currentImpact, compact: true)
+                    }
 
                     Spacer(minLength: 0)
                 }
@@ -652,6 +689,104 @@ struct CheckView: View {
         min(max(value, 0.0), 1.0)
     }
 
+    private func costImpactSummaryRow(_ costImpact: CostImpactRangePayload) -> some View {
+        HStack(alignment: .top, spacing: 10) {
+            costImpactChip(costImpact, compact: false)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(costImpact.rationale)
+                    .font(.caption)
+                    .foregroundStyle(AppTheme.mutedText)
+                Text("\(costImpact.conservativeLabel) to \(costImpact.optimisticLabel)")
+                    .font(.caption2)
+                    .foregroundStyle(AppTheme.mutedText)
+            }
+
+            Spacer(minLength: 0)
+        }
+    }
+
+    private func costImpactBreakdownSection(_ costImpact: CostImpactRangePayload) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            Text("Cost Impact")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(AppTheme.accentColor)
+
+            HStack(spacing: 18) {
+                smallStat("Baseline (Qty 1)", formatCurrency(costImpact.currentUnitCostEur))
+                smallStat("Unit Save", formatCurrencyRange(costImpact.minimumUnitSavingsEur, costImpact.maximumUnitSavingsEur))
+            }
+
+            Text(costImpact.rationale)
+                .font(.caption)
+                .foregroundStyle(AppTheme.mutedText)
+
+            Text("Range: \(costImpact.conservativeLabel) to \(costImpact.optimisticLabel)")
+                .font(.caption)
+                .foregroundStyle(AppTheme.mutedText)
+
+            if !costImpact.directBreakdown.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Direct")
+                        .font(.caption.weight(.semibold))
+                    ForEach(Array(costImpact.directBreakdown.enumerated()), id: \.offset) { _, row in
+                        costImpactBreakdownRow(row)
+                    }
+                }
+            }
+
+            if !costImpact.linkedBreakdown.isEmpty {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text("Linked")
+                        .font(.caption.weight(.semibold))
+                    ForEach(Array(costImpact.linkedBreakdown.enumerated()), id: \.offset) { _, row in
+                        costImpactBreakdownRow(row)
+                    }
+                }
+            }
+        }
+        .padding(10)
+        .background(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .fill(AppTheme.accentColor.opacity(0.06))
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: 12, style: .continuous)
+                .stroke(AppTheme.accentColor.opacity(0.18), lineWidth: 1)
+        )
+    }
+
+    private func costImpactBreakdownRow(_ row: CostImpactBreakdownPayload) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            HStack {
+                Text(row.label)
+                    .font(.caption.weight(.semibold))
+                Spacer()
+                Text(formatCurrencyRange(row.minimumUnitSavingsEur, row.maximumUnitSavingsEur))
+                    .font(.caption.monospacedDigit())
+                    .foregroundStyle(AppTheme.success)
+            }
+
+            if !row.details.isEmpty {
+                Text(row.details)
+                    .font(.caption2)
+                    .foregroundStyle(AppTheme.mutedText)
+            }
+        }
+    }
+
+    private func costImpactChip(_ costImpact: CostImpactRangePayload, compact: Bool) -> some View {
+        Text("Save \(formatCurrencyRange(costImpact.minimumUnitSavingsEur, costImpact.maximumUnitSavingsEur)) / unit")
+            .font(compact ? .caption2.weight(.semibold) : .caption.weight(.semibold))
+            .foregroundStyle(AppTheme.success)
+            .padding(.horizontal, compact ? 7 : 9)
+            .padding(.vertical, compact ? 4 : 6)
+            .background(
+                Capsule(style: .continuous)
+                    .fill(AppTheme.success.opacity(0.12))
+            )
+    }
+
     private func formatMetric(_ value: Double) -> String {
         value.formatted(.number.precision(.fractionLength(3)))
     }
@@ -686,8 +821,24 @@ struct CheckView: View {
         value.formatted(.currency(code: "EUR"))
     }
 
+    private func formatCurrencyRange(_ minimum: Double, _ maximum: Double) -> String {
+        if abs(minimum - maximum) <= 0.005 {
+            return formatCurrency(maximum)
+        }
+        return "\(formatCurrency(minimum))-\(formatCurrency(maximum))"
+    }
+
     private func formatMultiplier(_ value: Double) -> String {
         "\(format(value))x"
+    }
+}
+
+private extension Array {
+    subscript(safe index: Int) -> Element? {
+        guard indices.contains(index) else {
+            return nil
+        }
+        return self[index]
     }
 }
 

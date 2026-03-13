@@ -9,6 +9,7 @@ from OCC.Core.TopAbs import TopAbs_FACE
 from OCC.Core.TopExp import TopExp_Explorer
 from OCC.Core.TopoDS import TopoDS_Shape
 
+from dfm_cost_impact import attach_cost_impacts
 from dfm_geometry import read_step, shape_bbox, shape_surface_area_mm2, shape_volume_mm3
 from dfm_materials import get_material, material_keys
 from dfm_models import AnalysisResult, AnalysisSummary, Config, FeatureInsight, PartProcessData, Recommendation, RuleResult
@@ -57,6 +58,10 @@ def _format_ratio(value: float) -> str:
 
 def _priority_from_multiplier(multiplier: float, floor: int = 50) -> int:
     return max(floor, int(round((max(multiplier, 1.0) - 1.0) * 100.0)) + floor)
+
+
+def _limit_feature_insights(insights: List[FeatureInsight], limit: int = 12) -> List[FeatureInsight]:
+    return list(insights[:limit])
 
 
 def build_recommendations(
@@ -318,7 +323,7 @@ def build_recommendations(
                 "Pattern holes consistently so the drilling cycle is simpler.",
             ],
             source="Hole count",
-            feature_insights=all_hole_feature_insights,
+            feature_insights=_limit_feature_insights(all_hole_feature_insights),
         )
 
     if process_data.radius_count_multiplier > 1.05:
@@ -337,7 +342,7 @@ def build_recommendations(
                 "Prefer fewer simpler internal features over many repeated corner transitions.",
             ],
             source="Radius count",
-            feature_insights=all_radius_feature_insights,
+            feature_insights=_limit_feature_insights(all_radius_feature_insights),
         )
 
     if not recommendations:
@@ -355,7 +360,9 @@ def build_recommendations(
         )
 
     recommendations.sort(key=lambda rec: (0 if rec.kind == "blocker" else 1, -rec.priority, rec.title))
-    return recommendations[:6]
+    recommendations = recommendations[:6]
+    attach_cost_impacts(recommendations, rules, process_data, cfg)
+    return recommendations
 
 
 def build_config_from_args(args: argparse.Namespace) -> Config:

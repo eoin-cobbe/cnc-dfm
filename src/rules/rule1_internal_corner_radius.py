@@ -316,14 +316,7 @@ def evaluate_internal_corner_radius(shape: TopoDS_Shape, cfg: Config, step_file:
                 (
                     radius,
                     FeatureInsight(
-                        id=feature_id(
-                            "rule1-count",
-                            axis_name,
-                            round(feature["midpoint"].X(), 3),
-                            round(feature["midpoint"].Y(), 3),
-                            round(feature["midpoint"].Z(), 3),
-                            round(radius, 3),
-                        ),
+                        id=insight.id,
                         summary=insight.summary,
                         highlight_kind=insight.highlight_kind,
                         axis=insight.axis,

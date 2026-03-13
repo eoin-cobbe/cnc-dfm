@@ -1,0 +1,79 @@
+@import "tailwindcss";
+
+:root {
+  color-scheme: light;
+  --page-bg: #eef1f5;
+  --page-ink: #111827;
+  --panel: rgba(255, 255, 255, 0.88);
+  --panel-strong: rgba(255, 255, 255, 0.96);
+  --panel-border: rgba(125, 140, 164, 0.24);
+  --panel-muted: #5f6b7c;
+  --accent: #0f56d8;
+  --accent-soft: rgba(15, 86, 216, 0.1);
+  --accent-strong: #083b97;
+  --danger: #b42318;
+  --danger-soft: rgba(180, 35, 24, 0.1);
+  --warning: #b54708;
+  --warning-soft: rgba(181, 71, 8, 0.12);
+  --success: #027a48;
+  --success-soft: rgba(2, 122, 72, 0.12);
+  --ring-shadow: 0 16px 44px rgba(15, 23, 42, 0.08);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  min-height: 100%;
+  background:
+    radial-gradient(circle at top left, rgba(15, 86, 216, 0.1), transparent 30%),
+    radial-gradient(circle at top right, rgba(103, 80, 164, 0.08), transparent 28%),
+    linear-gradient(180deg, #f8fafc 0%, var(--page-bg) 100%);
+}
+
+body {
+  min-height: 100vh;
+  margin: 0;
+  color: var(--page-ink);
+  font-family: "Avenir Next", "Segoe UI", sans-serif;
+  text-rendering: optimizeLegibility;
+}
+
+button,
+input,
+select,
+textarea {
+  font: inherit;
+}
+
+::selection {
+  background: rgba(15, 86, 216, 0.18);
+}
+
+.panel-blur {
+  backdrop-filter: blur(20px);
+}
+
+.fine-grid {
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.36) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.36) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+.section-fade {
+  animation: section-fade 320ms ease-out;
+}
+
+@keyframes section-fade {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

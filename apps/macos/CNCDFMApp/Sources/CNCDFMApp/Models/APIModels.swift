@@ -172,6 +172,7 @@ struct RecommendationPayload: Decodable, Identifiable {
     let actions: [String]
     let source: String
     let featureInsights: [FeatureInsightPayload]
+    let costImpact: CostImpactRangePayload?
 
     var id: String { "\(kind)-\(source)-\(title)" }
 
@@ -184,6 +185,57 @@ struct RecommendationPayload: Decodable, Identifiable {
         case actions
         case source
         case featureInsights = "feature_insights"
+        case costImpact = "cost_impact"
+    }
+}
+
+struct CostImpactRangePayload: Decodable, Hashable {
+    let currentUnitCostEur: Double
+    let currentBatchCostEur: Double
+    let minimumUnitSavingsEur: Double
+    let maximumUnitSavingsEur: Double
+    let minimumBatchSavingsEur: Double
+    let maximumBatchSavingsEur: Double
+    let minimumPercentSavings: Double
+    let maximumPercentSavings: Double
+    let conservativeLabel: String
+    let optimisticLabel: String
+    let rationale: String
+    let directBreakdown: [CostImpactBreakdownPayload]
+    let linkedBreakdown: [CostImpactBreakdownPayload]
+
+    enum CodingKeys: String, CodingKey {
+        case currentUnitCostEur = "current_unit_cost_eur"
+        case currentBatchCostEur = "current_batch_cost_eur"
+        case minimumUnitSavingsEur = "minimum_unit_savings_eur"
+        case maximumUnitSavingsEur = "maximum_unit_savings_eur"
+        case minimumBatchSavingsEur = "minimum_batch_savings_eur"
+        case maximumBatchSavingsEur = "maximum_batch_savings_eur"
+        case minimumPercentSavings = "minimum_percent_savings"
+        case maximumPercentSavings = "maximum_percent_savings"
+        case conservativeLabel = "conservative_label"
+        case optimisticLabel = "optimistic_label"
+        case rationale
+        case directBreakdown = "direct_breakdown"
+        case linkedBreakdown = "linked_breakdown"
+    }
+}
+
+struct CostImpactBreakdownPayload: Decodable, Hashable {
+    let label: String
+    let minimumUnitSavingsEur: Double
+    let maximumUnitSavingsEur: Double
+    let minimumBatchSavingsEur: Double
+    let maximumBatchSavingsEur: Double
+    let details: String
+
+    enum CodingKeys: String, CodingKey {
+        case label
+        case minimumUnitSavingsEur = "minimum_unit_savings_eur"
+        case maximumUnitSavingsEur = "maximum_unit_savings_eur"
+        case minimumBatchSavingsEur = "minimum_batch_savings_eur"
+        case maximumBatchSavingsEur = "maximum_batch_savings_eur"
+        case details
     }
 }
 
@@ -199,6 +251,7 @@ struct FeatureInsightPayload: Decodable, Identifiable, Hashable {
     let segmentStart: Point3Payload?
     let segmentEnd: Point3Payload?
     let overlayMeshPaths: [String]
+    let costImpact: CostImpactRangePayload?
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -212,6 +265,7 @@ struct FeatureInsightPayload: Decodable, Identifiable, Hashable {
         case segmentStart = "segment_start"
         case segmentEnd = "segment_end"
         case overlayMeshPaths = "overlay_mesh_paths"
+        case costImpact = "cost_impact"
     }
 
     init(from decoder: Decoder) throws {
@@ -227,6 +281,7 @@ struct FeatureInsightPayload: Decodable, Identifiable, Hashable {
         segmentStart = try container.decodeIfPresent(Point3Payload.self, forKey: .segmentStart)
         segmentEnd = try container.decodeIfPresent(Point3Payload.self, forKey: .segmentEnd)
         overlayMeshPaths = try container.decodeIfPresent([String].self, forKey: .overlayMeshPaths) ?? []
+        costImpact = try container.decodeIfPresent(CostImpactRangePayload.self, forKey: .costImpact)
     }
 }
 

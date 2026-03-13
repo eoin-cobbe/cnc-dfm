@@ -1,0 +1,45 @@
+FROM ubuntu:24.04
+
+ENV DEBIAN_FRONTEND=noninteractive
+ENV CONDA_DIR=/opt/conda
+ENV PATH="${CONDA_DIR}/bin:${PATH}"
+ENV PYTHONUNBUFFERED=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    bash \
+    bzip2 \
+    ca-certificates \
+    curl \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+RUN arch="$(uname -m)" && \
+    case "${arch}" in \
+      x86_64) miniforge_arch="x86_64" ;; \
+      aarch64) miniforge_arch="aarch64" ;; \
+      *) echo "Unsupported architecture: ${arch}" && exit 1 ;; \
+    esac && \
+    curl -fsSL "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-${miniforge_arch}.sh" -o /tmp/miniforge.sh && \
+    bash /tmp/miniforge.sh -b -p "${CONDA_DIR}" && \
+    rm /tmp/miniforge.sh
+
+WORKDIR /app
+
+COPY requirements.txt requirements-web.txt ./
+
+RUN mamba install -y -c conda-forge python=3.11 pythonocc-core pip && \
+    pip install --no-cache-dir -r requirements-web.txt && \
+    mamba clean --all --yes
+
+COPY src ./src
+COPY README.md ./README.md
+COPY docs ./docs
+RUN mkdir -p /app/cache/previews /app/cache/feature-overlays /app/cache/web/uploads
+
+ENV CNC_DFM_REPO_ROOT=/app
+ENV PYTHONPATH=/app/src
+ENV PORT=10000
+
+EXPOSE 10000
+
+CMD ["/bin/bash", "-lc", "uvicorn dfm_web_api:app --app-dir /app/src --host 0.0.0.0 --port ${PORT:-10000}"]

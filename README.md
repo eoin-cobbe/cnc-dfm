@@ -14,10 +14,11 @@
 
 `cnc-dfm` checks CNC STEP files against core manufacturability rules.
 
-It has two ways to use it:
+It has three ways to use it:
 
 - `Terminal`: fast CLI workflow
 - `macOS App`: native viewer and analysis UI
+- `Web App`: Next.js client backed by a Python HTTP API
 
 ## Terminal Install
 
@@ -84,3 +85,4 @@ open dist/CNCDFMApp.app
 
 - CLI commands: [docs/CLI_API.md](docs/CLI_API.md)
 - macOS app notes: [apps/macos/CNCDFMApp/README.md](apps/macos/CNCDFMApp/README.md)
+- web app notes: [docs/WEB_APP.md](docs/WEB_APP.md)
