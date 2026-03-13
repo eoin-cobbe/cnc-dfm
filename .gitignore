@@ -29,6 +29,12 @@ apps/macos/CNCDFMApp/dist/
 apps/web/.next/
 apps/web/node_modules/
 apps/web/out/
+apps/web/.env.local
+
+# Local env files
+.env
+.env.local
+.env.*.local
 
 # Editor settings
 .vscode/
