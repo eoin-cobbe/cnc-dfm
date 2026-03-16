@@ -3,10 +3,12 @@ from __future__ import annotations
 import os
 import re
 import shutil
+import sys
 from collections import OrderedDict
 from typing import List
 
 from dfm_models import PartProcessData, Recommendation, RuleResult
+from dfm_progress import ProgressMilestone
 
 
 class Ansi:
@@ -63,6 +65,25 @@ def print_boot(step_file: str) -> None:
     print("")
     print("")
     print("")
+
+
+def render_progress(milestone: ProgressMilestone) -> None:
+    width = 34
+    filled = max(0, min(width, int(round(milestone.percent * width))))
+    bar = f"[{'#' * filled}{'-' * (width - filled)}]"
+    rss = f"{milestone.resources.rss_mb:.1f} MB" if milestone.resources.rss_mb is not None else "n/a"
+    line = (
+        f"\r{bar} {int(round(milestone.percent * 100)):>3}% "
+        f"{milestone.label} | CPU {milestone.resources.cpu_load_percent:>5.1f}% "
+        f"| RSS {rss:>7} | {milestone.resources.elapsed_ms:>5} ms"
+    )
+    sys.stdout.write(line[: max(60, shutil.get_terminal_size((120, 24)).columns - 1)])
+    sys.stdout.flush()
+
+
+def finish_progress() -> None:
+    sys.stdout.write("\n")
+    sys.stdout.flush()
 
 
 def _print_two_column_rows(rows: List[tuple[str, str]], label_width: int = 24, gap: int = 4) -> None:

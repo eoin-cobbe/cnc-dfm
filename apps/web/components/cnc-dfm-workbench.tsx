@@ -3,9 +3,9 @@
 import { useDeferredValue, useEffect, useRef, useState, useTransition, type ChangeEvent } from "react";
 import dynamic from "next/dynamic";
 
-import { analyzeFile, fetchConfig, fetchHealth, fetchMaterials, resolveArtifactUrl, saveConfig } from "@/lib/api";
+import { analyzeFileWithProgress, fetchConfig, fetchHealth, fetchMaterials, saveConfig } from "@/lib/api";
 import { applyQuantityToProcessData, formatCurrency, formatInteger, formatMultiplier, formatNumber, groupFeatureInsights, metricBarData } from "@/lib/format";
-import type { Analysis, ConfigValues, CostImpactBreakdown, CostImpactRange, HealthResponse, MaterialSpec, Recommendation } from "@/lib/types";
+import type { Analysis, AnalysisProgress, ConfigValues, CostImpactBreakdown, CostImpactRange, HealthResponse, MaterialSpec, Recommendation } from "@/lib/types";
 import { cn } from "@/lib/cn";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -331,6 +331,7 @@ export function CncDfmWorkbench() {
   const [pendingAnalysisFileName, setPendingAnalysisFileName] = useState<string | null>(null);
   const [isBootstrapping, setIsBootstrapping] = useState(false);
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisProgress, setAnalysisProgress] = useState<AnalysisProgress | null>(null);
   const [isSavingSettings, setIsSavingSettings] = useState(false);
   const [isPending, startTransition] = useTransition();
   const deferredFocusedInsightId = useDeferredValue(selectedFeatureInstanceId);
@@ -446,13 +447,16 @@ export function CncDfmWorkbench() {
 
     setPendingAnalysisFileName(nextFile.name);
     setIsAnalyzing(true);
+    setAnalysisProgress(null);
     try {
-      const response = await analyzeFile(nextFile, quantity);
+      const response = await analyzeFileWithProgress(nextFile, quantity, (progress) => {
+        setAnalysisProgress(progress);
+      });
       const defaultRecommendation = response.analysis.recommendations[0] ?? null;
       const defaultGroups = groupFeatureInsights(defaultRecommendation);
       startTransition(() => {
         setAnalysis(response.analysis);
-        setPreviewUrl(resolveArtifactUrl(response.previewUrl));
+        setPreviewUrl(response.previewUrl);
         setQuantity(response.analysis.process_data.qty);
         setSelectedRecommendationId(defaultRecommendation ? defaultRecommendation.title + defaultRecommendation.source + defaultRecommendation.kind : null);
         setSelectedFeatureGroupId(defaultGroups[0]?.id ?? null);
@@ -461,6 +465,7 @@ export function CncDfmWorkbench() {
         setSelectedScreen("recommendations");
       });
     } catch (error) {
+      setAnalysisProgress(null);
       setLastErrorMessage(error instanceof Error ? error.message : "Analysis failed.");
     } finally {
       setIsAnalyzing(false);
@@ -521,14 +526,18 @@ export function CncDfmWorkbench() {
     }
 
     return (
-      <Card>
-        <CardHeader>
-          <CardTitle>3D Preview</CardTitle>
-          <CardDescription>Preview appears here after analysis finishes.</CardDescription>
-        </CardHeader>
-        <CardContent>
+        <Card>
+          <CardHeader>
+            <CardTitle>3D Preview</CardTitle>
+            <CardDescription>Preview appears here after analysis finishes.</CardDescription>
+          </CardHeader>
+          <CardContent>
           <div className="flex min-h-[320px] items-center justify-center rounded-[20px] border border-dashed border-[color:var(--panel-border)] bg-white/50 text-center text-sm text-[var(--panel-muted)]">
-            {isAnalyzing ? "Generating preview from the uploaded STEP file..." : "Run an analysis to load the model preview."}
+            {isAnalyzing
+              ? analysisProgress?.stage_id.startsWith("preview")
+                ? "Generating preview from the analyzed STEP file..."
+                : "Preview will load once the backend reaches the preview stage."
+              : "Run an analysis to load the model preview."}
           </div>
         </CardContent>
       </Card>
@@ -1223,11 +1232,35 @@ export function CncDfmWorkbench() {
                   <CardTitle>Running New Analysis</CardTitle>
                   <CardDescription>The current results stay visible until the next run finishes.</CardDescription>
                 </CardHeader>
-                <CardContent className="flex items-center gap-4 pt-0">
-                  <div className="h-10 w-10 rounded-full border-4 border-slate-300 border-t-slate-500 animate-spin" />
-                  <div className="space-y-0.5">
-                    <p className="text-sm font-semibold">{pendingAnalysisFileName}</p>
-                    <p className="text-sm text-[var(--panel-muted)]">Loading next analysis in the background</p>
+                <CardContent className="space-y-4 pt-0">
+                  <div className="flex items-start justify-between gap-6">
+                    <div className="min-w-0 space-y-1">
+                      <p className="text-sm font-semibold">{pendingAnalysisFileName}</p>
+                      <p className="text-sm text-slate-800">{analysisProgress?.label ?? "Preparing analysis"}</p>
+                      <p className="text-sm text-[var(--panel-muted)]">
+                        {analysisProgress?.detail ?? "Loading next analysis in the background."}
+                      </p>
+                      {analysisProgress ? (
+                        <p className="text-xs text-[var(--panel-muted)]">
+                          {analysisProgress.resources.elapsed_ms} ms
+                          {" · "}
+                          CPU {analysisProgress.resources.cpu_load_percent.toFixed(1)}%
+                          {" · "}
+                          RSS {analysisProgress.resources.rss_mb != null ? `${analysisProgress.resources.rss_mb.toFixed(1)} MB` : "n/a"}
+                        </p>
+                      ) : null}
+                    </div>
+                    <div className="shrink-0 text-right">
+                      <p className="text-[38px] font-bold tracking-[-0.04em] text-slate-900">
+                        {Math.max(1, Math.round((analysisProgress?.percent ?? 0.04) * 100))}%
+                      </p>
+                    </div>
+                  </div>
+                  <div className="h-2 overflow-hidden rounded-full bg-slate-200">
+                    <div
+                      className="h-full rounded-full bg-[linear-gradient(90deg,var(--accent),#74a7ff)] transition-[width] duration-200"
+                      style={{ width: `${Math.max(4, Math.round((analysisProgress?.percent ?? 0.04) * 100))}%` }}
+                    />
                   </div>
                 </CardContent>
               </Card>

@@ -230,6 +230,55 @@ class CostImpactTests(unittest.TestCase):
         self.assertGreater(impact.maximum_unit_savings_eur, impact.minimum_unit_savings_eur)
         self.assertTrue(any(feature.cost_impact is not None for feature in features))
 
+    def test_rule5_5_axis_access_pattern_below_threshold_still_gets_cost_impact(self) -> None:
+        cfg = Config(max_setups=2, machine_hourly_rate_3_axis_eur=50.0, machine_hourly_rate_5_axis_eur=100.0)
+        process_data = make_process_data(
+            machine_type="5-axis",
+            machine_hourly_rate_eur=100.0,
+            rule_multiplier=1.0,
+            required_setup_directions="X+, Y+",
+        )
+        features = [
+            FeatureInsight(id="rule5-xplus", summary="4 feature(s) requiring the X+ setup direction."),
+            FeatureInsight(id="rule5-yplus", summary="2 feature(s) requiring the Y+ setup direction."),
+        ]
+        rule = RuleResult(
+            name="Rule 5 — Multiple Setup Faces",
+            passed=True,
+            summary="PASS",
+            details="test",
+            detected_features=2,
+            passed_features=2,
+            failed_features=0,
+            threshold=2.0,
+            threshold_kind="max",
+            rule_multiplier=1.0,
+            feature_insights=features,
+        )
+        recommendation = Recommendation(
+            kind="cost",
+            priority=115,
+            title="Rework geometry toward a 3-axis or flip-only process",
+            summary="test",
+            impact="test",
+            actions=[],
+            source=rule.name,
+            feature_insights=features,
+        )
+
+        impact = estimate_recommendation_cost_impact(
+            recommendation,
+            rules_by_key={"rule5": rule},
+            process_data=process_data,
+            cfg=cfg,
+        )
+
+        self.assertIsNotNone(impact)
+        assert impact is not None
+        self.assertTrue(impact.linked_breakdown)
+        self.assertAlmostEqual(impact.minimum_unit_savings_eur, impact.maximum_unit_savings_eur, places=6)
+        self.assertTrue(any(feature.cost_impact is not None for feature in features))
+
     def test_count_recommendations_have_exact_per_feature_savings(self) -> None:
         cfg = Config(
             hole_count_penalty_per_feature=0.02,

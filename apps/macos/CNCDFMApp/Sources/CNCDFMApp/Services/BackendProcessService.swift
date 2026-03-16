@@ -51,6 +51,18 @@ struct BackendProcessService {
         )
     }
 
+    func analyzeWithProgress(
+        fileURL: URL,
+        qty: Int,
+        onProgress: @escaping @MainActor (AnalysisProgressPayload) -> Void
+    ) async throws -> (analysis: AnalysisResponse, preview: PreviewResponse?) {
+        try await runStreaming(["analyze-progress", "--input", fileURL.path, "--qty", String(qty), "--generate-preview"]) { event in
+            if let progress = event.progress {
+                await onProgress(progress)
+            }
+        }
+    }
+
     private func run<T: Decodable>(_ arguments: [String], stdin: Data? = nil, decode type: T.Type) async throws -> T {
         let output = try await runRaw(arguments, stdin: stdin)
         if output.exitCode != 0 {
@@ -112,6 +124,65 @@ struct BackendProcessService {
                 continuation.resume(throwing: error)
             }
         }
+    }
+
+    private func runStreaming(
+        _ arguments: [String],
+        stdin: Data? = nil,
+        onEvent: @escaping @Sendable (AnalyzeProgressEventPayload) async -> Void
+    ) async throws -> (analysis: AnalysisResponse, preview: PreviewResponse?) {
+        let process = Process()
+        process.currentDirectoryURL = installation.repoRoot
+        process.executableURL = installation.executableURL
+        process.arguments = installation.launchPrefix + arguments
+
+        let stdoutPipe = Pipe()
+        let stderrPipe = Pipe()
+        process.standardOutput = stdoutPipe
+        process.standardError = stderrPipe
+
+        let stdinPipe = Pipe()
+        if stdin != nil {
+            process.standardInput = stdinPipe
+        }
+        let terminationStatusTask = Task<Int32, Never> {
+            await withCheckedContinuation { continuation in
+                process.terminationHandler = { finishedProcess in
+                    continuation.resume(returning: finishedProcess.terminationStatus)
+                }
+            }
+        }
+        try process.run()
+        if let stdin {
+            stdinPipe.fileHandleForWriting.write(stdin)
+            try? stdinPipe.fileHandleForWriting.close()
+        }
+
+        var finalAnalysis: AnalysisResponse?
+        var finalPreview: PreviewResponse?
+
+        for try await line in stdoutPipe.fileHandleForReading.bytes.lines {
+            let lineData = Data(line.utf8)
+            let event = try decoder.decode(AnalyzeProgressEventPayload.self, from: lineData)
+            await onEvent(event)
+            if event.event == "error", let error = event.error {
+                throw BackendProcessError.api(error)
+            }
+            if event.event == "result", let analysis = event.analysis {
+                finalAnalysis = analysis
+                finalPreview = event.preview
+            }
+        }
+
+        let terminationStatus = await terminationStatusTask.value
+
+        let stderr = try stderrPipe.fileHandleForReading.readToEnd() ?? Data()
+        if let finalAnalysis {
+            return (analysis: finalAnalysis, preview: finalPreview)
+        }
+
+        let stderrText = String(decoding: stderr, as: UTF8.self).trimmingCharacters(in: .whitespacesAndNewlines)
+        throw BackendProcessError.nonZeroExit(terminationStatus, stderrText.isEmpty ? "Backend stream failed." : stderrText)
     }
 }
 

@@ -85,6 +85,11 @@ struct RootView: View {
                             .foregroundStyle(AppTheme.mutedText)
                             .lineLimit(2)
                             .multilineTextAlignment(.center)
+                        Text(model.analysisProgressTitle)
+                            .font(.caption2)
+                            .foregroundStyle(AppTheme.mutedText)
+                            .lineLimit(2)
+                            .multilineTextAlignment(.center)
                     } else {
                         Text("Choose a STEP file and start the next run")
                             .font(.caption)

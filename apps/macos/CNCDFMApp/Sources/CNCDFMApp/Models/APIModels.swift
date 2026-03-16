@@ -71,6 +71,44 @@ struct PreviewResponse: Decodable {
     }
 }
 
+struct ProgressResourcesPayload: Decodable {
+    let elapsedMs: Int
+    let cpuTimeS: Double
+    let cpuLoadPercent: Double
+    let rssMb: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case elapsedMs = "elapsed_ms"
+        case cpuTimeS = "cpu_time_s"
+        case cpuLoadPercent = "cpu_load_percent"
+        case rssMb = "rss_mb"
+    }
+}
+
+struct AnalysisProgressPayload: Decodable {
+    let stageID: String
+    let label: String
+    let detail: String
+    let percent: Double
+    let resources: ProgressResourcesPayload
+
+    enum CodingKeys: String, CodingKey {
+        case stageID = "stage_id"
+        case label
+        case detail
+        case percent
+        case resources
+    }
+}
+
+struct AnalyzeProgressEventPayload: Decodable {
+    let event: String
+    let progress: AnalysisProgressPayload?
+    let analysis: AnalysisResponse?
+    let preview: PreviewResponse?
+    let error: APIErrorPayload?
+}
+
 struct MaterialSpecPayload: Decodable, Identifiable {
     let key: String
     let label: String

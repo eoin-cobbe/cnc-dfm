@@ -6,19 +6,22 @@ import re
 import secrets
 import shutil
 import sys
+import threading
+from queue import Queue
 from dataclasses import asdict
 from pathlib import Path
 from typing import Any, Dict
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 
 from dfm_app_api import _config_to_model
 from dfm_check import analyze_step_file
 from dfm_config import config_path, load_config, load_saved_only, normalize_config_payload, save_config_payload
 from dfm_materials import MATERIAL_OPTIONS
+from dfm_progress import ProgressMilestone, ProgressReporter
 from dfm_preview import export_step_preview_stl, overlay_cache_dir, preview_cache_dir
 
 
@@ -88,6 +91,10 @@ def rewrite_overlay_mesh_paths(payload: Any) -> Any:
 
 def error_response(message: str, status_code: int = 400) -> JSONResponse:
     return JSONResponse(status_code=status_code, content={"error": {"message": message}})
+
+
+def stream_event(payload: Dict[str, Any]) -> bytes:
+    return (json.dumps(payload, separators=(",", ":")) + "\n").encode("utf-8")
 
 
 ensure_runtime_dirs()
@@ -221,6 +228,107 @@ async def analyze(
         "previewUrl": preview_url,
         "uploadedFileName": file.filename,
         "config": cfg_values,
+    }
+
+
+@app.post("/api/v1/analyze/stream")
+async def analyze_stream(
+    file: UploadFile = File(...),
+    qty: int = Form(1),
+    config_json: str | None = Form(None),
+    save_config: bool = Form(False),
+    generate_preview: bool = Form(True),
+) -> StreamingResponse:
+    if qty < 1:
+        raise HTTPException(status_code=400, detail="qty must be >= 1")
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="A STEP file is required.")
+
+    upload_path = store_upload(file)
+    cfg_values = load_config()
+
+    if config_json:
+        payload = json.loads(config_json)
+        if not isinstance(payload, dict):
+            raise HTTPException(status_code=400, detail="config_json must decode to an object")
+        if save_config:
+            cfg_values = save_config_payload(payload, base=cfg_values)
+        else:
+            cfg_values = normalize_config_payload(payload, base=cfg_values)
+
+    queue: Queue[bytes | None] = Queue()
+
+    def on_progress(milestone: ProgressMilestone) -> None:
+        queue.put(
+            stream_event(
+                {
+                    "event": "progress",
+                    "progress": milestone.to_dict(),
+                }
+            )
+        )
+
+    def worker() -> None:
+        try:
+            reporter = ProgressReporter(on_progress)
+            analysis = analyze_step_file(str(upload_path), _config_to_model(cfg_values), qty, progress=reporter, percent_end=0.9)
+            analysis_payload = rewrite_overlay_mesh_paths(asdict(analysis))
+            analysis_payload["file_path"] = file.filename
+
+            preview_url = None
+            if generate_preview:
+                preview_path = export_step_preview_stl(str(upload_path), progress=reporter, percent_start=0.9, percent_end=1.0)
+                preview_url = artifact_url_for_path(preview_path)
+
+            queue.put(
+                stream_event(
+                    {
+                        "event": "result",
+                        "analysis": analysis_payload,
+                        "previewUrl": preview_url,
+                        "uploadedFileName": file.filename,
+                        "config": cfg_values,
+                    }
+                )
+            )
+        except Exception as exc:
+            queue.put(
+                stream_event(
+                    {
+                        "event": "error",
+                        "error": {
+                            "type": exc.__class__.__name__,
+                            "message": str(exc),
+                        },
+                    }
+                )
+            )
+        finally:
+            queue.put(None)
+
+    threading.Thread(target=worker, daemon=True).start()
+
+    def iter_events():
+        while True:
+            item = queue.get()
+            if item is None:
+                break
+            yield item
+
+    return StreamingResponse(iter_events(), media_type="application/x-ndjson")
+
+
+@app.post("/api/v1/preview")
+async def preview(file: UploadFile = File(...)) -> Dict[str, Any]:
+    if not file.filename:
+        raise HTTPException(status_code=400, detail="A STEP file is required.")
+
+    upload_path = store_upload(file)
+    preview_path = export_step_preview_stl(str(upload_path))
+
+    return {
+        "previewUrl": artifact_url_for_path(preview_path),
+        "uploadedFileName": file.filename,
     }
 
 

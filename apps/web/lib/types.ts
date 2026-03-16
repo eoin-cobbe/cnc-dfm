@@ -217,3 +217,23 @@ export interface AnalyzeResponse {
   uploadedFileName: string;
   config: ConfigValues;
 }
+
+export interface PreviewResponse {
+  previewUrl: string | null;
+  uploadedFileName: string;
+}
+
+export interface ProgressResources {
+  elapsed_ms: number;
+  cpu_time_s: number;
+  cpu_load_percent: number;
+  rss_mb: number | null;
+}
+
+export interface AnalysisProgress {
+  stage_id: string;
+  label: string;
+  detail: string;
+  percent: number;
+  resources: ProgressResources;
+}

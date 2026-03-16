@@ -25,6 +25,12 @@ final class AppModel: ObservableObject {
     @Published var isRunningNextAnalysis = false
     @Published var isSavingSettings = false
     @Published var lastErrorMessage: String?
+    @Published var analysisProgressFraction: Double = 0
+    @Published var analysisProgressTitle = "Preparing analysis"
+    @Published var analysisProgressDetail = "Waiting to start."
+    @Published var analysisProgressElapsedMs: Int = 0
+    @Published var analysisProgressCPULoadPercent: Double = 0
+    @Published var analysisProgressRSSMB: Double?
 
     let backendService: BackendProcessService
     private var analysisTask: Task<Void, Never>?
@@ -211,7 +217,14 @@ final class AppModel: ObservableObject {
         analysisTask?.cancel()
         pendingAnalysisFileName = fileURL.lastPathComponent
         isRunningNextAnalysis = true
+        isAnalyzing = true
         lastErrorMessage = nil
+        analysisProgressFraction = 0
+        analysisProgressTitle = "Preparing analysis"
+        analysisProgressDetail = "Waiting for backend milestones."
+        analysisProgressElapsedMs = 0
+        analysisProgressCPULoadPercent = 0
+        analysisProgressRSSMB = nil
 
         analysisTask = Task { [weak self] in
             guard let self else {
@@ -226,46 +239,38 @@ final class AppModel: ObservableObject {
             }
 
             do {
-                let nextAnalysis = try await self.backendService.analyze(fileURL: fileURL, qty: self.quantity)
+                let result = try await self.backendService.analyzeWithProgress(fileURL: fileURL, qty: self.quantity) { progress in
+                    self.analysisProgressFraction = progress.percent
+                    self.analysisProgressTitle = progress.label
+                    self.analysisProgressDetail = progress.detail
+                    self.analysisProgressElapsedMs = progress.resources.elapsedMs
+                    self.analysisProgressCPULoadPercent = progress.resources.cpuLoadPercent
+                    self.analysisProgressRSSMB = progress.resources.rssMb
+                    self.isGeneratingPreview = progress.stageID.hasPrefix("preview")
+                }
                 if Task.isCancelled {
                     return
                 }
                 self.selectedFileURL = fileURL
-                self.analysis = nextAnalysis
-                self.quantity = nextAnalysis.processData.qty
-                self.selectedRecommendationID = nextAnalysis.recommendations.first?.id
-                self.selectedFeatureGroupID = nextAnalysis.recommendations.first?.featureGroups.first?.id
-                self.selectedFeatureInstanceID = nextAnalysis.recommendations.first?.featureGroups.first?.instances.first?.id
-                self.previewFileURL = nil
-                self.isAnalyzing = false
-                Task {
-                    await self.generatePreview(for: fileURL)
+                self.analysis = result.analysis
+                self.quantity = result.analysis.processData.qty
+                self.selectedRecommendationID = result.analysis.recommendations.first?.id
+                self.selectedFeatureGroupID = result.analysis.recommendations.first?.featureGroups.first?.id
+                self.selectedFeatureInstanceID = result.analysis.recommendations.first?.featureGroups.first?.instances.first?.id
+                if let previewPath = result.preview?.previewPath {
+                    self.previewFileURL = URL(fileURLWithPath: previewPath)
+                } else {
+                    self.previewFileURL = nil
                 }
+                self.isAnalyzing = false
+                self.isGeneratingPreview = false
             } catch {
                 if Task.isCancelled {
                     return
                 }
+                self.analysisProgressFraction = 0
                 self.present(error)
             }
-        }
-    }
-
-    func generatePreview(for fileURL: URL) async {
-        isGeneratingPreview = true
-        defer { isGeneratingPreview = false }
-
-        do {
-            let preview = try await backendService.generatePreview(fileURL: fileURL)
-            guard selectedFileURL == fileURL else {
-                return
-            }
-            previewFileURL = URL(fileURLWithPath: preview.previewPath)
-        } catch {
-            guard selectedFileURL == fileURL else {
-                return
-            }
-            previewFileURL = nil
-            present(error)
         }
     }
 
@@ -288,6 +293,12 @@ final class AppModel: ObservableObject {
         isGeneratingPreview = false
         isRunningNextAnalysis = false
         lastErrorMessage = nil
+        analysisProgressFraction = 0
+        analysisProgressTitle = "Preparing analysis"
+        analysisProgressDetail = "Waiting to start."
+        analysisProgressElapsedMs = 0
+        analysisProgressCPULoadPercent = 0
+        analysisProgressRSSMB = nil
     }
 }
 

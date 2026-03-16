@@ -640,7 +640,11 @@ def _rule5_impact(
     baseline: _CostSnapshot,
 ) -> Optional[CostImpactRange]:
     current_setup_keys = _parse_setup_keys(rule.feature_insights)
-    if not current_setup_keys or len(current_setup_keys) <= cfg.max_setups:
+    if not current_setup_keys:
+        return None
+    if len(current_setup_keys) <= cfg.max_setups:
+        if process_data.machine_type == "5-axis":
+            return _process_machine_impact(recommendation, rule, process_data, cfg, baseline)
         return None
 
     def group_impact(insight: FeatureInsight) -> Optional[CostImpactRange]:

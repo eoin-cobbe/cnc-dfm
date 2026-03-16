@@ -9,6 +9,7 @@ from OCC.Core.StlAPI import StlAPI_Writer
 from OCC.Core.TopoDS import TopoDS_Compound, TopoDS_Shape
 
 from dfm_geometry import read_step
+from dfm_progress import ProgressReporter
 
 
 def preview_cache_dir() -> Path:
@@ -42,20 +43,35 @@ def export_step_preview_stl(
     step_file: str,
     linear_deflection: float = 0.5,
     angular_deflection: float = 0.5,
+    progress: ProgressReporter | None = None,
+    percent_start: float = 0.0,
+    percent_end: float = 1.0,
 ) -> Path:
+    def stage(percent: float, stage_id: str, label: str, detail: str) -> None:
+        if progress is None:
+            return
+        scaled = percent_start + ((percent_end - percent_start) * percent)
+        progress.emit(stage_id=stage_id, label=label, detail=detail, percent=scaled)
+
     source = Path(step_file).expanduser().resolve()
     output = preview_mesh_path(str(source))
     output.parent.mkdir(parents=True, exist_ok=True)
 
+    stage(0.0, "preview_started", "Generating 3D preview", "Preparing preview output path.")
     if output.exists():
+        stage(1.0, "preview_complete", "3D preview ready", "Reused a cached preview mesh.")
         return output
 
+    stage(0.18, "preview_read_step", "Loading geometry for preview", "Reading the STEP file for preview meshing.")
     shape = read_step(str(source))
+    stage(0.48, "preview_meshing", "Meshing preview geometry", "Triangulating the shape for the 3D viewer.")
     mesh = BRepMesh_IncrementalMesh(shape, linear_deflection, False, angular_deflection, True)
     mesh.Perform()
 
+    stage(0.82, "preview_writing", "Writing preview mesh", "Saving the STL preview artifact.")
     writer = StlAPI_Writer()
     writer.Write(shape, str(output))
+    stage(1.0, "preview_complete", "3D preview ready", "Preview mesh is ready for the UI.")
     return output
 
 

@@ -12,12 +12,18 @@ from typing import Any, Dict
 from dfm_config import config_path, load_config, load_saved_only, normalize_config_payload, save_config_payload
 from dfm_materials import MATERIAL_OPTIONS
 from dfm_models import Config
+from dfm_progress import ProgressMilestone, ProgressReporter
 
 
 def _emit_json(payload: Dict[str, Any]) -> int:
     json.dump(payload, sys.stdout, indent=2)
     sys.stdout.write("\n")
     return 0
+
+
+def _emit_event(payload: Dict[str, Any]) -> None:
+    sys.stdout.write(json.dumps(payload, separators=(",", ":")) + "\n")
+    sys.stdout.flush()
 
 
 def _serialize_analysis_result(analysis) -> Dict[str, Any]:
@@ -142,6 +148,51 @@ def _handle_analyze(args: argparse.Namespace) -> int:
     return _emit_json(_serialize_analysis_result(analysis))
 
 
+def _handle_analyze_progress(args: argparse.Namespace) -> int:
+    from dfm_check import analyze_step_file
+    from dfm_preview import export_step_preview_stl
+
+    if args.qty < 1:
+        raise ValueError("--qty must be >= 1")
+    if args.save_config and args.config_input is None:
+        raise ValueError("--save-config requires --config-input")
+
+    cfg_values = load_config()
+    if args.config_input is not None:
+        payload = _load_json_input(args.config_input)
+        if args.save_config:
+            cfg_values = save_config_payload(payload, base=cfg_values)
+        else:
+            cfg_values = normalize_config_payload(payload, base=cfg_values)
+
+    def on_progress(milestone: ProgressMilestone) -> None:
+        _emit_event(
+            {
+                "event": "progress",
+                "progress": milestone.to_dict(),
+            }
+        )
+
+    reporter = ProgressReporter(on_progress)
+    analysis = analyze_step_file(args.input, _config_to_model(cfg_values), args.qty, progress=reporter, percent_end=0.9)
+    preview_path = None
+    if args.generate_preview:
+        preview_path = export_step_preview_stl(args.input, progress=reporter, percent_start=0.9, percent_end=1.0)
+
+    _emit_event(
+        {
+            "event": "result",
+            "analysis": _serialize_analysis_result(analysis),
+            "preview": {
+                "sourcePath": str(Path(args.input).expanduser().resolve()),
+                "previewPath": str(preview_path) if preview_path else None,
+                "format": "stl" if preview_path else None,
+            },
+        }
+    )
+    return 0
+
+
 def _handle_preview(args: argparse.Namespace) -> int:
     from dfm_preview import export_step_preview_stl
 
@@ -188,6 +239,25 @@ def build_parser() -> argparse.ArgumentParser:
         help="Persist config overrides before analysis",
     )
     analyze_parser.set_defaults(func=_handle_analyze)
+
+    analyze_progress_parser = subparsers.add_parser("analyze-progress", help="Stream analysis progress as NDJSON")
+    analyze_progress_parser.add_argument("--input", required=True, help="Path to input STEP file")
+    analyze_progress_parser.add_argument("--qty", type=int, default=1, help="Batch quantity")
+    analyze_progress_parser.add_argument(
+        "--config-input",
+        help="Optional JSON config overrides path or '-' for stdin",
+    )
+    analyze_progress_parser.add_argument(
+        "--save-config",
+        action="store_true",
+        help="Persist config overrides before analysis",
+    )
+    analyze_progress_parser.add_argument(
+        "--generate-preview",
+        action="store_true",
+        help="Generate preview and include preview progress in the stream",
+    )
+    analyze_progress_parser.set_defaults(func=_handle_analyze_progress)
 
     preview_parser = subparsers.add_parser("preview", help="Generate a preview mesh for app rendering")
     preview_parser.add_argument("--input", required=True, help="Path to input STEP file")

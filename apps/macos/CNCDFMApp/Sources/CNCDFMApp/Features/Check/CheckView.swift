@@ -155,19 +155,35 @@ struct CheckView: View {
     private var backgroundRunBanner: some View {
         if model.isRunningNextAnalysis, let pendingAnalysisFileName = model.pendingAnalysisFileName {
             PanelCard(title: "Running New Analysis", subtitle: "The current results stay visible until the next run finishes.") {
-                HStack(spacing: 12) {
-                    ProgressView()
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(pendingAnalysisFileName)
-                            .font(.subheadline.weight(.semibold))
-                        Text("Loading next analysis in the background")
-                            .font(.caption)
-                            .foregroundStyle(AppTheme.mutedText)
+                VStack(alignment: .leading, spacing: 12) {
+                    HStack(alignment: .top, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(pendingAnalysisFileName)
+                                .font(.subheadline.weight(.semibold))
+                            Text(model.analysisProgressTitle)
+                                .font(.caption.weight(.medium))
+                            Text(model.analysisProgressDetail)
+                                .font(.caption)
+                                .foregroundStyle(AppTheme.mutedText)
+                            Text(progressStatsLine)
+                                .font(.caption2)
+                                .foregroundStyle(AppTheme.mutedText)
+                        }
+                        Spacer(minLength: 0)
+                        Text("\(max(1, Int((model.analysisProgressFraction * 100).rounded())))%")
+                            .font(.system(size: 34, weight: .bold, design: .rounded))
+                            .foregroundStyle(.primary)
                     }
-                    Spacer(minLength: 0)
+                    ProgressView(value: model.analysisProgressFraction)
+                        .tint(AppTheme.accentColor)
                 }
             }
         }
+    }
+
+    private var progressStatsLine: String {
+        let rssText = model.analysisProgressRSSMB.map { String(format: "%.1f MB", $0) } ?? "n/a"
+        return "\(model.analysisProgressElapsedMs) ms · CPU \(String(format: "%.1f", model.analysisProgressCPULoadPercent))% · RSS \(rssText)"
     }
 
     @ViewBuilder

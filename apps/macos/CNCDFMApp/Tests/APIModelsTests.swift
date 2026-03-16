@@ -4,6 +4,34 @@ import Testing
 
 struct APIModelsTests {
     @Test
+    func analyzeProgressEventDecodesProgressPayload() throws {
+        let json = """
+        {
+          "event": "progress",
+          "progress": {
+            "stage_id": "rules_complete",
+            "label": "Rule evaluation complete",
+            "detail": "All manufacturability checks finished.",
+            "percent": 0.76,
+            "resources": {
+              "elapsed_ms": 1820,
+              "cpu_time_s": 1.24,
+              "cpu_load_percent": 97.5,
+              "rss_mb": 156.2
+            }
+          }
+        }
+        """
+
+        let event = try JSONDecoder().decode(AnalyzeProgressEventPayload.self, from: Data(json.utf8))
+        let progress = try #require(event.progress)
+        #expect(event.event == "progress")
+        #expect(progress.stageID == "rules_complete")
+        #expect(progress.resources.elapsedMs == 1820)
+        #expect(progress.resources.rssMb == 156.2)
+    }
+
+    @Test
     func recommendationDecodesCostImpactPayload() throws {
         let json = """
         {

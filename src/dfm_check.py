@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import math
+import sys
 from typing import List, Set
 
 from OCC.Core.TopAbs import TopAbs_FACE
@@ -13,7 +14,8 @@ from dfm_cost_impact import attach_cost_impacts
 from dfm_geometry import read_step, shape_bbox, shape_surface_area_mm2, shape_volume_mm3
 from dfm_materials import get_material, material_keys
 from dfm_models import AnalysisResult, AnalysisSummary, Config, FeatureInsight, PartProcessData, Recommendation, RuleResult
-from dfm_terminal import print_boot, print_part_process_data, print_report
+from dfm_progress import ProgressReporter
+from dfm_terminal import finish_progress, print_boot, print_part_process_data, print_report, render_progress
 from rules.rule5_multiple_setup_faces import required_setup_directions
 from rules import (
     evaluate_missing_internal_relief,
@@ -26,18 +28,54 @@ from rules import (
 )
 
 
-def run_all_rules(shape: TopoDS_Shape, cfg: Config, step_file: str) -> List[RuleResult]:
+def run_all_rules(
+    shape: TopoDS_Shape,
+    cfg: Config,
+    step_file: str,
+    progress: ProgressReporter | None = None,
+    percent_start: float = 0.22,
+    percent_end: float = 0.76,
+) -> List[RuleResult]:
+    def _rule_progress(index: int, total: int, name: str) -> None:
+        if progress is None:
+            return
+        progress.emit(
+            stage_id=f"rule_{index}_of_{total}",
+            label=f"Evaluating {name}",
+            detail=f"Running manufacturability rule {index} of {total}.",
+            percent=percent_start + ((percent_end - percent_start) * (index - 1) / max(1, total)),
+        )
+
+    total_rules = 7
+    _rule_progress(1, total_rules, "Rule 0")
     rule0 = evaluate_missing_internal_relief(shape, cfg)
-    if not rule0.passed:
-        return [rule0]
+    _rule_progress(2, total_rules, "Rule 1")
+    rule1 = evaluate_internal_corner_radius(shape, cfg, step_file=step_file)
+    _rule_progress(3, total_rules, "Rule 2")
+    rule2 = evaluate_deep_pocket_ratio(shape, cfg, step_file=step_file)
+    _rule_progress(4, total_rules, "Rule 3")
+    rule3 = evaluate_thin_walls(shape, cfg, step_file=step_file)
+    _rule_progress(5, total_rules, "Rule 4")
+    rule4 = evaluate_hole_depth_vs_diameter(shape, cfg, step_file=step_file)
+    _rule_progress(6, total_rules, "Rule 5")
+    rule5 = evaluate_multiple_setup_faces(shape, cfg, step_file=step_file)
+    _rule_progress(7, total_rules, "Rule 6")
+    rule6 = evaluate_tool_depth_to_diameter(shape, cfg, step_file=step_file)
+    if progress is not None:
+        progress.emit(
+            stage_id="rules_complete",
+            label="Rule evaluation complete",
+            detail="All manufacturability checks finished.",
+            percent=percent_end,
+        )
     return [
         rule0,
-        evaluate_internal_corner_radius(shape, cfg, step_file=step_file),
-        evaluate_deep_pocket_ratio(shape, cfg, step_file=step_file),
-        evaluate_thin_walls(shape, cfg, step_file=step_file),
-        evaluate_hole_depth_vs_diameter(shape, cfg, step_file=step_file),
-        evaluate_multiple_setup_faces(shape, cfg, step_file=step_file),
-        evaluate_tool_depth_to_diameter(shape, cfg, step_file=step_file),
+        rule1,
+        rule2,
+        rule3,
+        rule4,
+        rule5,
+        rule6,
     ]
 
 
@@ -205,32 +243,46 @@ def build_recommendations(
             )
         elif "Rule 5" in rule.name:
             has_setup_direction_recommendation = True
-            machine_note = ""
             if process_data.machine_type == "5-axis":
-                machine_note = (
-                    f" The current setup pattern already pushes the estimate onto a {process_data.machine_type} machine "
-                    f"at {process_data.machine_hourly_rate_eur:.0f} EUR/hr."
+                add(
+                    kind="cost",
+                    priority=115,
+                    title="Rework geometry toward a 3-axis or flip-only process",
+                    summary=(
+                        f"The current access pattern selects a {process_data.machine_type} machine because the part needs "
+                        f"{process_data.required_setup_directions}."
+                    ),
+                    impact=(
+                        f"This pushes machining onto the higher-rate machine band of {process_data.machine_hourly_rate_eur:.0f} EUR/hr."
+                    ),
+                    actions=[
+                        "Move angled or side-only features onto the top or bottom faces where possible.",
+                        "Combine feature access directions so the part can be machined in one setup plus one flip.",
+                        "Question whether every side feature is functionally necessary or can be simplified.",
+                    ],
+                    source=rule.name,
+                    feature_insights=rule.feature_insights,
                 )
-            add(
-                kind="cost",
-                priority=110,
-                title="Reduce the number of setup directions",
-                summary=(
-                    f"The part currently needs about {int(rule.average_detected or 0)} setup direction(s), above the "
-                    f"target of {cfg.max_setups}."
-                ),
-                impact=(
-                    "Extra setups add fixturing time, stack-up error, and can push the part onto a 5-axis process."
-                    f"{machine_note}"
-                ),
-                actions=[
-                    "Reorient side features so more of them can be machined from the same top or flip setup.",
-                    "Align holes, pockets, and relief features to a common datum direction.",
-                    "Avoid isolated side details that require a dedicated access direction.",
-                ],
-                source=rule.name,
-                feature_insights=rule.feature_insights,
-            )
+            else:
+                add(
+                    kind="cost",
+                    priority=110,
+                    title="Reduce the number of setup directions",
+                    summary=(
+                        f"The part currently needs about {int(rule.average_detected or 0)} setup direction(s), above the "
+                        f"target of {cfg.max_setups}."
+                    ),
+                    impact=(
+                        "Extra setups add fixturing time, stack-up error, and can push the part onto a 5-axis process."
+                    ),
+                    actions=[
+                        "Reorient side features so more of them can be machined from the same top or flip setup.",
+                        "Align holes, pockets, and relief features to a common datum direction.",
+                        "Avoid isolated side details that require a dedicated access direction.",
+                    ],
+                    source=rule.name,
+                    feature_insights=rule.feature_insights,
+                )
         elif "Rule 6" in rule.name:
             add(
                 kind="cost",
@@ -527,7 +579,16 @@ def compute_part_process_data(
     hole_count: int,
     radius_count: int,
     qty: int,
+    progress: ProgressReporter | None = None,
+    percent_start: float = 0.0,
+    percent_end: float = 1.0,
 ) -> PartProcessData:
+    def stage(percent: float, stage_id: str, label: str, detail: str) -> None:
+        if progress is None:
+            return
+        scaled = percent_start + ((percent_end - percent_start) * percent)
+        progress.emit(stage_id=stage_id, label=label, detail=detail, percent=scaled)
+
     def _is_opposite_pair(setup_keys: Set[str]) -> bool:
         if len(setup_keys) != 2:
             return False
@@ -535,6 +596,7 @@ def compute_part_process_data(
         sides = {key[1] for key in setup_keys}
         return len(axes) == 1 and sides == {"+", "-"}
 
+    stage(0.0, "process_geometry_metrics", "Computing geometry metrics", "Calculating volume, surface area, and bounding box.")
     volume_mm3 = shape_volume_mm3(shape)
     part_surface_area_mm2 = shape_surface_area_mm2(shape)
     part_bbox_x_mm, part_bbox_y_mm, part_bbox_z_mm = shape_bbox(shape)
@@ -557,6 +619,7 @@ def compute_part_process_data(
     surface_area_multiplier = 1.0 + cfg.surface_penalty_slope * (surface_area_ratio - 1.0)
     surface_area_multiplier = max(1.0, min(surface_area_multiplier, cfg.surface_penalty_max_multiplier))
 
+    stage(0.2, "process_complexity", "Computing complexity metrics", "Counting faces and surface-driven complexity.")
     face_count = 0
     face_exp = TopExp_Explorer(shape, TopAbs_FACE)
     while face_exp.More():
@@ -567,6 +630,8 @@ def compute_part_process_data(
         cfg.complexity_penalty_max_multiplier,
         1.0 + (cfg.complexity_penalty_per_face * complexity_over),
     )
+
+    stage(0.36, "process_material", "Computing material and stock costs", "Calculating density, stock mass, and raw material cost.")
     material = get_material(material_key)
     ref_6061 = get_material("6061_aluminium")
     billet_cost_eur_per_kg = (
@@ -588,6 +653,8 @@ def compute_part_process_data(
         cfg.radius_count_penalty_max_multiplier,
         1.0 + (cfg.radius_count_penalty_per_feature * max(0, radius_count)),
     )
+
+    stage(0.56, "process_setup_access", "Computing setup access", "Analyzing required setup directions and machine selection.")
     setup_keys = required_setup_directions(shape, cfg)
     setup_text = ", ".join(sorted(setup_keys)) if setup_keys else "none"
     is_flip_only = len(setup_keys) <= 1 or _is_opposite_pair(setup_keys)
@@ -595,6 +662,8 @@ def compute_part_process_data(
     machine_hourly_rate_eur = (
         cfg.machine_hourly_rate_3_axis_eur if machine_type == "3-axis" else cfg.machine_hourly_rate_5_axis_eur
     )
+
+    stage(0.74, "process_machining_time", "Computing machining time", "Estimating roughing rate, quantity scaling, and machining time.")
     material_time_multiplier = ref_6061.machinability_index / material.machinability_index
     estimated_roughing_mrr_mm3_per_min = baseline_6061_mrr_mm3_per_min / material_time_multiplier
     base_roughing_time_min = removed_volume_mm3 / baseline_6061_mrr_mm3_per_min
@@ -627,6 +696,7 @@ def compute_part_process_data(
     base_machining_cost = (base_machining_time_min / 60.0) * machine_hourly_rate_eur
     total_estimated_cost_eur = (material_stock_cost_eur + base_machining_cost) * qty_multiplier
     batch_total_estimated_cost_eur = total_estimated_cost_eur * qty_safe
+    stage(0.92, "process_cost_summary", "Finalizing cost summary", "Assembling the final process and cost summary payload.")
     return PartProcessData(
         material_key=material.key,
         material_label=material.label,
@@ -680,9 +750,26 @@ def compute_part_process_data(
     )
 
 
-def analyze_step_file(step_file: str, cfg: Config, qty: int) -> AnalysisResult:
+def analyze_step_file(
+    step_file: str,
+    cfg: Config,
+    qty: int,
+    progress: ProgressReporter | None = None,
+    percent_start: float = 0.0,
+    percent_end: float = 1.0,
+) -> AnalysisResult:
+    def stage(percent: float, stage_id: str, label: str, detail: str) -> None:
+        if progress is None:
+            return
+        scaled = percent_start + ((percent_end - percent_start) * percent)
+        progress.emit(stage_id=stage_id, label=label, detail=detail, percent=scaled)
+
+    stage(0.02, "analysis_started", "Preparing analysis", "Starting part analysis.")
+    stage(0.08, "read_step_started", "Reading STEP geometry", "Loading the STEP file into the geometry kernel.")
     shape = read_step(step_file)
-    results = run_all_rules(shape, cfg, step_file)
+    stage(0.2, "read_step_complete", "STEP geometry loaded", "Geometry loaded successfully. Starting manufacturability checks.")
+    results = run_all_rules(shape, cfg, step_file, progress=progress, percent_start=0.22, percent_end=0.76)
+    stage(0.82, "process_data_started", "Computing process data", "Calculating stock, machine, and cost drivers.")
     rule_multiplier = combined_rule_multiplier(results)
     hole_count = 0
     radius_count = 0
@@ -701,11 +788,15 @@ def analyze_step_file(step_file: str, cfg: Config, qty: int) -> AnalysisResult:
         hole_count,
         radius_count,
         qty,
+        progress=progress,
+        percent_start=0.82,
+        percent_end=0.92,
     )
+    stage(0.94, "recommendations_started", "Building recommendations", "Ranking recommendations and summarizing the analysis.")
     passed_rule_count = sum(1 for result in results if result.passed)
     failed_rule_count = len(results) - passed_rule_count
     recommendations = build_recommendations(results, process_data, cfg)
-    return AnalysisResult(
+    analysis = AnalysisResult(
         file_path=step_file,
         process_data=process_data,
         rules=results,
@@ -718,13 +809,18 @@ def analyze_step_file(step_file: str, cfg: Config, qty: int) -> AnalysisResult:
         ),
         recommendations=recommendations,
     )
+    stage(1.0, "analysis_complete", "Analysis complete", "Analysis payload is ready.")
+    return analysis
 
 
 def main() -> int:
     args = build_arg_parser().parse_args()
     cfg = build_config_from_args(args)
     print_boot(args.step_file)
-    analysis = analyze_step_file(args.step_file, cfg, args.qty)
+    progress = ProgressReporter(render_progress) if sys.stdout.isatty() else None
+    analysis = analyze_step_file(args.step_file, cfg, args.qty, progress=progress)
+    if progress is not None:
+        finish_progress()
     print_part_process_data(analysis.process_data)
     print_report(analysis.rules, args.step_file, analysis.recommendations)
     return 0
